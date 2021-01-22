@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 
-from __future__ import annotations
-from _typeshed import SupportsNoArgReadline
-from typing import Tuple, List, Optional
 """ For traversing the pedigree and other related operations. """
+
+from __future__ import annotations
+from typing import Tuple, List, Optional
 
 AGE_DEFAULT = 100
 
 class Node:
     def __init__(
         self,
+        id: str,
         female: bool,
         mt_dna: str,
         y_chrom: Optional[str] = None,
@@ -34,6 +35,7 @@ class Node:
         """
         self.female = female
         self.mt_dna = mt_dna
+        self.age = age
 
         # Tuple, first element is mother, second is father.
         if parents is not None:
@@ -49,4 +51,14 @@ class Node:
         self.y_chrom = y_chrom
         self.siblings = siblings
         self.partners = partners
+        self.id = id
     
+    def __str__(self):
+        """
+            String representation for debugging.
+        """
+        return f'id: {self.id}\n' + \
+               f'gender: {"F" if self.female else "M"}\n' + \
+               f'mtDna: {self.mt_dna}\n' + \
+               f'yChrom: {self.y_chrom}\n' + \
+               f'age: {self.age}\n'
