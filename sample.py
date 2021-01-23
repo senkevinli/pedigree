@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+
+""" Runs pedigree construction on sample data. """
 import csv
-import networkx as nx
-import matplotlib.pyplot as plt
 
 from constructor.pedigree import Node
+from constructor.visualizer import visualize_graph
+from typing import List
 from os import path
 
 def main():
@@ -24,29 +26,48 @@ def main():
         for row in reader:
             female = row[1] == 'F'
             node_list.append(Node(
-                row[0], female, row[2], row[3] if not female else None, row[4]
+                row[0], female, row[2], row[3] if not female else None, occupied=True, age=row[4]
             ))
-    for node in node_list:
-        print(node)
+    # a = node_list[0]
+    # b = node_list[1]
+    # c = node_list[2]
+    # d = node_list[3]
+    # e = node_list[4]
+    # f = node_list[5]
 
-def visualize_graph(nodes):
-    
-    G = nx.Graph()
-    G.add_nodes_from(['A', 'B', 'C'])
-    G.add_edge('A', 'B')
-    G.add_edge('B', 'C')
-    values = [0.25, 0.25, 0.25]
-    edge_colors = [0.3, 1]
-    pos = {
-        'A': [0, 0],
-        'B': [0.5, 0],
-        'C': [1, 0]
-    }
-    nx.draw(G, pos, cmap=plt.get_cmap('jet'), edge_color=edge_colors, node_color=values, node_size=900)
 
-    plt.axis('off')
-    plt.show()
+    # a.children.append(b)
+    # c.children.append(b)
+    # d.children.append(a)
+    # e.children.append(a)
+    # f.children.append(b)
+    node_list[0].extrapolate_node()
+    node_list = visit_nodes(node_list)
+    print(len(node_list))
+    visualize_graph(node_list)
+
+def visit_nodes(node_list: List[Node]) -> List[Node]:
+    """
+        Returns a complete list of nodes.
+    """
+    visited = set()
+
+    def visit_edges(relations: List[Node]):
+        for relative in relations:
+            if relative not in visited:
+                visited.add(relative)
+                node_list.append(relative)
+
+    # BFS search to get all the nodes in the visited set.
+    while len(node_list) > 0:
+        node = node_list.pop()
+        visited.add(node)
+
+        # Sufficient to visit only parents and children.
+        visit_edges(node.parents)
+        visit_edges(node.children)
+    return list(visited)
+
 if __name__ == '__main__':
-    # main()
-    visualize_graph(None)
+    main()
 
