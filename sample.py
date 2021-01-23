@@ -41,7 +41,8 @@ def main():
     # d.children.append(a)
     # e.children.append(a)
     # f.children.append(b)
-    node_list[0].extrapolate_node()
+    for node in node_list:
+        node.extrapolate_node()
     node_list = visit_nodes(node_list)
     print(len(node_list))
     visualize_graph(node_list)
