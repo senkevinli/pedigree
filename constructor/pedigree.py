@@ -145,3 +145,32 @@ class Node:
 
         partner.children += [fem_child, male_child]
         self.children += [fem_child, male_child]
+
+
+def construct_graph(node_list: List[Node], pairwise_relations) ->List[Node]:
+    for node in node_list:
+        node.extrapolate_node()
+    ret = visit_nodes(node_list)
+    return ret
+    
+def visit_nodes(node_list: List[Node]) -> List[Node]:
+    """
+        Returns a complete list of nodes.
+    """
+    visited = set()
+
+    def visit_edges(relations: List[Node]):
+        for relative in relations:
+            if relative not in visited:
+                visited.add(relative)
+                node_list.append(relative)
+
+    # BFS search to get all the nodes in the visited set.
+    while len(node_list) > 0:
+        node = node_list.pop()
+        visited.add(node)
+
+        # Sufficient to visit only parents and children.
+        visit_edges(node.parents)
+        visit_edges(node.children)
+    return list(visited)
