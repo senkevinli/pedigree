@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 from copy import deepcopy
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Set, Optional
 
 AGE_DEFAULT = 100
+DEGREE_CAP = 4
 class Node:
     filler_id = 0
     def __init__(
@@ -95,57 +96,57 @@ class Node:
 
         assert len(self.parents) == 2
 
-        # Give two full siblings of each gender.
-        Node.filler_id += 1
-        fem_sibling = Node(
-            str(Node.filler_id),
-            True,
-            mt_dna=self.mt_dna,
-            parents=self.parents,   
-        )
-        Node.filler_id += 1
-        male_sibling = Node(
-            str(Node.filler_id),
-            False,
-            mt_dna=self.mt_dna,
-            y_chrom=self.parents[1].y_chrom,
-            parents=self.parents
-        )
+        # # Give two full siblings of each gender.
+        # Node.filler_id += 1
+        # fem_sibling = Node(
+        #     str(Node.filler_id),
+        #     True,
+        #     mt_dna=self.mt_dna,
+        #     parents=self.parents,   
+        # )
+        # Node.filler_id += 1
+        # male_sibling = Node(
+        #     str(Node.filler_id),
+        #     False,
+        #     mt_dna=self.mt_dna,
+        #     y_chrom=self.parents[1].y_chrom,
+        #     parents=self.parents
+        # )
 
-        fem_sibling.siblings += [male_sibling, self]
-        male_sibling.siblings += [male_sibling, self]
+        # fem_sibling.siblings += [male_sibling, self]
+        # male_sibling.siblings += [male_sibling, self]
 
-        for parent in self.parents:
-            parent.children += [male_sibling, fem_sibling]
+        # for parent in self.parents:
+        #     parent.children += [male_sibling, fem_sibling]
 
-        # Make filler partner.
-        Node.filler_id += 1
-        partner = Node(
-            str(Node.filler_id),
-            not self.female,
-            partners=[self]
-        )
-        self.partners.append(partner)
+        # # Make filler partner.
+        # Node.filler_id += 1
+        # partner = Node(
+        #     str(Node.filler_id),
+        #     not self.female,
+        #     partners=[self]
+        # )
+        # self.partners.append(partner)
 
-        # Give two children of each gender.
-        Node.filler_id += 1
-        fem_child = Node(
-            str(Node.filler_id),
-            True,
-            mt_dna=self.mt_dna if self.female else None,
-            parents=(self, partner) if self.female else (partner, self) 
-        )
-        Node.filler_id += 1
-        male_child = Node(
-            str(Node.filler_id),
-            False,
-            mt_dna=self.mt_dna if self.female else None,
-            y_chrom=self.y_chrom if not self.female else None,
-            parents=(self, partner) if self.female else (partner, self)
-        )
+        # # Give two children of each gender.
+        # Node.filler_id += 1
+        # fem_child = Node(
+        #     str(Node.filler_id),
+        #     True,
+        #     mt_dna=self.mt_dna if self.female else None,
+        #     parents=(self, partner) if self.female else (partner, self) 
+        # )
+        # Node.filler_id += 1
+        # male_child = Node(
+        #     str(Node.filler_id),
+        #     False,
+        #     mt_dna=self.mt_dna if self.female else None,
+        #     y_chrom=self.y_chrom if not self.female else None,
+        #     parents=(self, partner) if self.female else (partner, self)
+        # )
 
-        partner.children += [fem_child, male_child]
-        self.children += [fem_child, male_child]
+        # partner.children += [fem_child, male_child]
+        # self.children += [fem_child, male_child]
 
 def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
@@ -170,6 +171,29 @@ def _visit_nodes(node_list: List[Node]) -> List[Node]:
         visit_edges(node.partners)
     return list(visited)
 
+def _construct_helper(
+        degree: int,
+        relations: Dict[int, List[Tuple[str, str]]],
+        node_map: Dict[str, Node],
+        complete_nodes: Set[Node]
+    ) -> bool:
+    """
+        Recursive helper for assigning nodes.
+    """
+    if degree == 0:
+        return True
+    
+    # First, assign all the ones that are degree 1.
+    to_assign = relations.get(1)
+
+    for relation in to_assign:
+        src, dest = relation
+        src_node = deepcopy(node_map.get(src))
+
+        # Case that src node is male.
+        if not src_node.female:
+            pass
+
 def construct_graph(
         node_list: List[Node],
         pairwise_relations: Dict[int, List[Tuple[str, str]]]
@@ -180,10 +204,22 @@ def construct_graph(
         If no pairwise relation exists between two nodes, we assume
         that the two nodes are not related.
     """
+    # Construct mapping for known nodes.
+    known = {}
     for node in node_list:
-        node.extrapolate()
+        assert(node.id not in known.keys())
+        known.update({node.id: node})
+
+    for degree in range(DEGREE_CAP):
+        to_assign = pairwise_relations.get(degree)
+
+        # Extrapolate first
+        for node in node_list:
+            node.extrapolate()
+        
+        # Begin assigning.
+
     ret = _visit_nodes(node_list)
-    ret = deepcopy_graph(ret)
     return ret
 
 def deepcopy_graph(node_list: List[Node]) -> List[Node]:
