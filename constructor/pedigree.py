@@ -3,7 +3,8 @@
 """ For traversing the pedigree and other related operations. """
 
 from __future__ import annotations
-from typing import Tuple, List, Optional
+from copy import deepcopy
+from typing import Tuple, List, Dict, Optional
 
 AGE_DEFAULT = 100
 class Node:
@@ -65,7 +66,7 @@ class Node:
                f'yChrom: {self.y_chrom}\n' + \
                f'age: {self.age}\n'
 
-    def extrapolate_node(self):
+    def extrapolate(self):
         """
             Constructs surrounding nodes of a father, mother, two siblings of each gender,
             a partner, and two childrens of each gender. Extrapolate for all generations
@@ -146,14 +147,7 @@ class Node:
         partner.children += [fem_child, male_child]
         self.children += [fem_child, male_child]
 
-
-def construct_graph(node_list: List[Node], pairwise_relations) ->List[Node]:
-    for node in node_list:
-        node.extrapolate_node()
-    ret = visit_nodes(node_list)
-    return ret
-    
-def visit_nodes(node_list: List[Node]) -> List[Node]:
+def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
         Returns a complete list of nodes.
     """
@@ -173,4 +167,49 @@ def visit_nodes(node_list: List[Node]) -> List[Node]:
         # Sufficient to visit only parents and children.
         visit_edges(node.parents)
         visit_edges(node.children)
+        visit_edges(node.partners)
     return list(visited)
+
+def construct_graph(
+        node_list: List[Node],
+        pairwise_relations: Dict[int, List[Tuple[str, str]]]
+    ) -> List[Node]:
+    """
+        Constructs a graph from the given information of known
+        nodes and their pairwise relationships with each other.
+        If no pairwise relation exists between two nodes, we assume
+        that the two nodes are not related.
+    """
+    for node in node_list:
+        node.extrapolate()
+    ret = _visit_nodes(node_list)
+    ret = deepcopy_graph(ret)
+    return ret
+
+def deepcopy_graph(node_list: List[Node]) -> List[Node]:
+    """
+        Constructs a deepcopy of the graph and returns it.
+        Does not modify the graph that is passed in.
+    """
+    all_nodes = _visit_nodes(node_list)
+    node_mapping = {}
+
+    for node in all_nodes:
+        copied = deepcopy(node)
+
+        # All IDs in the list should be unique.
+        assert(node.id not in node_mapping.keys())
+        node_mapping.update({node.id: copied})
+    
+    for node in node_mapping.values():
+        # Reset all connections to our copied nodes based on ID.
+        node.children = [node_mapping.get(rel.id) for rel in node.children]
+        node.partners = [node_mapping.get(rel.id) for rel in node.partners]
+        node.siblings = [node_mapping.get(rel.id) for rel in node.siblings]
+        if len(node.parents) > 0:
+            node.parents = (
+                node_mapping.get(node.parents[0].id),
+                node_mapping.get(node.parents[1].id)
+            )
+    ret = [node for node in node_mapping.values()]
+    return ret

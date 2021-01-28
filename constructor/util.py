@@ -13,6 +13,7 @@ from os import path
 
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
+OUTPUT_NAME = 'ex.png'
 
 def parse_data(bios_csv: str, degrees_csv: str):
     """
@@ -73,28 +74,5 @@ def visualize_graph(nodes: List[Node]):
     plt.axis('off')
     
     cur = path.dirname(__file__)
-    plt.savefig(path.join(cur, '../output/ex.png'))
-
-def visit_nodes(node_list: List[Node]) -> List[Node]:
-    """
-        Returns a complete list of nodes. Found through
-        a BFS search of children and parents.
-    """
-    visited = set()
-
-    def visit_edges(relations: List[Node]):
-        for relative in relations:
-            if relative not in visited:
-                visited.add(relative)
-                node_list.append(relative)
-
-    # BFS search to get all the nodes in the visited set.
-    while len(node_list) > 0:
-        node = node_list.pop()
-        visited.add(node)
-
-        # Sufficient to visit only parents and children.
-        visit_edges(node.parents)
-        visit_edges(node.children)
-    return list(visited)
+    plt.savefig(path.join(cur, f'../output/{OUTPUT_NAME}'))
 
