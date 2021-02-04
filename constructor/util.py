@@ -11,9 +11,13 @@ from typing import List
 from .pedigree import Node
 from os import path
 
+# Configurations.
+
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
 OUTPUT_NAME = 'ex.png'
+LABEL_SIZE = 7
+NODE_SIZE = 60
 
 def parse_data(bios_csv: str, degrees_csv: str):
     """
@@ -52,17 +56,30 @@ def parse_data(bios_csv: str, degrees_csv: str):
     print(pairwise_relations)
     return node_list, pairwise_relations
 
+def _format_label(node):
+    return f'ID: {node.id}\n' \
+           f'MtDna: {node.mt_dna}\n' \
+           f'YChrom: {node.y_chrom}'
 
 def visualize_graph(nodes: List[Node]):
     """
         Constructs a networkx graph from the given nodes
         and then displays it through matplotlib.
     """
+    plt.figure(figsize=(10, 5))
     G = nx.DiGraph()
     
     ids = [node.id for node in nodes]
-    color_map = [OCCUPIED_COLOR if node.occupied else FREE_COLOR for node in nodes]
-    G.add_nodes_from(ids, node_shape='o')
+
+    females = [node for node in nodes if node.female]
+    males = [node for node in nodes if not node.female]
+
+    colormap_m = [OCCUPIED_COLOR if node.occupied else FREE_COLOR for node in males]
+    colormap_f = [OCCUPIED_COLOR if node.occupied else FREE_COLOR for node in females]
+
+    info = {node.id: _format_label(node) for node in nodes}
+
+    G.add_nodes_from(ids)
 
     for node in nodes:
         # Only draw connections for children.
@@ -70,7 +87,26 @@ def visualize_graph(nodes: List[Node]):
             G.add_edge(node.id, child.id)
 
     pos = graphviz_layout(G, prog='dot')
-    nx.draw(G, pos, node_color=color_map, with_labels=True)
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=list(map(lambda node: node.id, males)), node_shape='s',
+        node_color=colormap_m,
+        node_size=NODE_SIZE
+    )
+
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        nodelist=list(map(lambda node: node.id, females)), node_shape='o',
+        node_color=colormap_f,
+        node_size=NODE_SIZE
+    )
+
+    nx.draw_networkx_edges(G, pos)
+    nx.draw_networkx_labels(G, pos, labels=info, font_size=LABEL_SIZE)
+
+    #nx.draw(G, pos, node_color=color_map, with_labels=True)
     plt.axis('off')
     
     cur = path.dirname(__file__)

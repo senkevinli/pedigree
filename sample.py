@@ -8,6 +8,8 @@ from constructor.util import parse_data, visualize_graph
 from typing import List
 from os import path
 
+OUTPUT_NAME = 'ex.png'
+
 def main():
 
     # Getting file paths.
