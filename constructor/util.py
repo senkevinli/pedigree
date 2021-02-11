@@ -16,8 +16,8 @@ from os import path
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
 OUTPUT_NAME = 'ex.png'
-LABEL_SIZE = 7
-NODE_SIZE = 60
+LABEL_SIZE = 5
+NODE_SIZE = 100
 
 def parse_data(bios_csv: str, degrees_csv: str):
     """
@@ -66,7 +66,7 @@ def visualize_graph(nodes: List[Node]):
         Constructs a networkx graph from the given nodes
         and then displays it through matplotlib.
     """
-    plt.figure(figsize=(10, 5))
+    plt.figure(3)
     G = nx.DiGraph()
     
     ids = [node.id for node in nodes]
@@ -110,5 +110,5 @@ def visualize_graph(nodes: List[Node]):
     plt.axis('off')
     
     cur = path.dirname(__file__)
-    plt.savefig(path.join(cur, f'../output/{OUTPUT_NAME}'))
+    plt.savefig(path.join(cur, f'../output/{OUTPUT_NAME}'), dpi=300)
 

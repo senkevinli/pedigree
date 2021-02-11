@@ -9,18 +9,20 @@ from typing import List
 from os import path
 
 OUTPUT_NAME = 'ex.png'
+INPUT_BIO = 'simple_bio.csv'
+INPUT_DEGREE = 'simple_degrees.csv'
 
 def main():
 
     # Getting file paths.
     dirname = path.dirname(__file__)
-    bios_csv = path.join(dirname, './samples/sample_bio.csv')
-    degrees_csv = path.join(dirname, './samples/sample_degrees.csv')
+    bios_csv = path.join(dirname, f'./samples/{INPUT_BIO}')
+    degrees_csv = path.join(dirname, f'./samples/{INPUT_DEGREE}')
     
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
     complete_nodes = construct_graph(node_list, mappings)
-    visualize_graph(complete_nodes)
+    visualize_graph(complete_nodes[0])
 
 if __name__ == '__main__':
     main()

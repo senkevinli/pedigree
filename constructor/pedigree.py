@@ -3,6 +3,7 @@
 """ For traversing the pedigree and other related operations. """
 
 from __future__ import annotations
+#`from constructor.util import visualize_graph
 from copy import deepcopy
 from typing import Tuple, List, Dict, Set, Optional
 
@@ -171,33 +172,204 @@ def _visit_nodes(node_list: List[Node]) -> List[Node]:
         visit_edges(node.partners)
     return list(visited)
 
+
+def _assign_helper(
+        relation: List[Tuple[str, str]],
+        node_map: Dict[str, Node],
+        node_list: List[Node],
+        all_possible: List[List[Node]],
+        idx: int
+    ) -> None:
+    
+    if idx == len(relation):
+        all_possible.append(deepcopy_graph(node_list))
+        return
+
+    src, dest = relation[idx]
+
+    # We want to be able to get back to our original state,
+    # cache the original relationships for both destination
+    # and source.
+    src_node = deepcopy(node_map.get(src))
+    dest_node = deepcopy(node_map.get(dest))
+
+    src = node_map.get(src)
+    dest = node_map.get(dest)
+
+    share_mt_dna = src.mt_dna == dest.mt_dna
+
+    # ------ ASSIGNMENTS ------
+
+    # Case that source and dest are both male.
+    if not src.female and not dest.female:
+        share_y = src.y_chrom == dest.y_chrom
+        if share_y and share_mt_dna:
+            # Must be siblings.
+
+            # First, add parental linkages. Change references 
+            # only for those that are occupied.
+            src_parents = src.parents
+            dest_parents = dest.parents
+
+            assert(src_parents is not None)
+            assert(dest_parents is not None)
+
+            # Confirming existing relationship
+            if src_parents[0] == dest_parents[0] and \
+               src_parents[1] == dest_parents[1]:
+               _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+               return
+            else:
+                total = src_parents + dest_parents
+                occupied = [node for node in total if node.occupied]
+
+                # Two or more occupied parents from different nodes, wrong configuration.
+                if len(occupied) > 2:
+                    return
+                if len(occupied) == 2:
+                    # Same gender, wrong configuration.
+                    if occupied[0].female == occupied[1].female:
+                        return
+                    # Different genders, merge.
+                    father = occupied[0] if not occupied[0].female else occupied[1]
+                    mother = occupied[1] if occupied[0].female else occupied[1]
+
+                    # Save state to revert.
+                    orig_src_parents = src.parents
+                    orig_dest_parents = dest.parents
+                    orig_father_children = [child for child in father.children]
+                    orig_mother_children = [child for child in mother.children]
+
+                    src.parents = (mother, father)
+                    dest.parents = (mother, father)
+
+                    for child in mother.children:
+                        if child not in father.children:
+                            father.children.append(child)
+                            child.parents = (mother, father)
+                    for child in father.children:
+                        if child not in mother.children:
+                            mother.children.append(child)
+                            child.parents = (mother, father)
+
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+
+                    src.parents = orig_src_parents
+                    dest.parents = orig_dest_parents
+                    for child in mother.children:
+                        if child not in orig_mother_children:
+                            child
+
+
+        elif share_y:
+            # Either father/son or son/father.
+            pass
+        else:
+            # No configuration works here.
+            return False
+
+    # Case that one is female and the other is male.
+    elif (not src.female and dest.female) or \
+         (src.female and not dest.female):
+            male_node = src if dest.female else dest
+            female_node = src if src.female else dest
+            print(male_node)
+            print(female_node)
+
+            if share_mt_dna:
+                # Either siblings or son/mother.
+                
+                # Case 1 siblings.
+                pass
+            else:
+                orig_female_node_parents = female_node.parents
+                # Must be father/daughter.
+                if female_node.parents[1].occupied and \
+                   female_node.parents[1] != male_node:
+                    return # Configuration is impossible.
+                elif female_node.parents[1] == male_node:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+                else:
+                    orig_female_node_parents = female_node.parents
+                    mother = female_node.parents[0]
+                    orig_mother_children = [child for child in mother.children]
+                    orig_father_children = [child for child in male_node.children]
+                    female_node.parents = (mother, male_node)
+
+                    # Add children of daughter's siblings.
+                    for child in mother.children:
+                        if child not in male_node.children:
+                            child.parents = (mother, male_node)
+                            male_node.children.append(child)
+                    for child in male_node.children:
+                        if child not in mother.children:
+                            child.parents = (mother, male_node)
+                            mother.children.append(child)
+                    # Recurse.
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+
+                    female_node.parents = orig_female_node_parents
+                    for child in male_node.children:
+                        if child in orig_mother_children:
+                            child.parents = orig_female_node_parents 
+                            male_node.children.remove(child)
+
+                    for child in mother.children:
+                        if child in orig_father_children:
+                            child.parents = (male_node.children[0].parents[0], male_node)
+                            mother.children.remove(child)
+
+    # Case that source and dest are both females.
+    else:
+        if share_mt_dna:
+            # May be siblings or daughter/mother or mother/daughter.
+            pass
+        else:
+            # No configuration works here.
+            return
+    
 def _construct_helper(
-        degree: int,
         relations: Dict[int, List[Tuple[str, str]]],
         node_map: Dict[str, Node],
-        complete_nodes: Set[Node]
+        node_list: List[Node],
+        all_possible: List[List[Node]]
     ) -> bool:
     """
         Recursive helper for assigning nodes.
     """
-    if degree == 0:
-        return True
+    if len(relations.keys() == 0):
+        all_possible.append(deepcopy_graph(node_list))
+        # Stop recursing.
+        return
     
     # First, assign all the ones that are degree 1.
     to_assign = relations.get(1)
 
-    for relation in to_assign:
-        src, dest = relation
-        src_node = deepcopy(node_map.get(src))
+    for i, relation in enumerate(to_assign):
+        pass
 
-        # Case that src node is male.
-        if not src_node.female:
-            pass
+    # for degree in node_map.keys():
+    #     degree_nodes = node_map.get(degree)
+    #     for src, dest in degree_nodes:
+    #         src = node_map.get(src)
+    #         dest = node_map.get(dest)
+
+    #         both_male = not src.female and not dest.female
+    #         one_female = (src.female and not dest.female) or \
+    #                      (dest.female and not src.female)
+
+    #         if both_male:
+    #             pass
+    #         elif one_female:
+    #             pass
+    #         else:
+    #             pass
+
 
 def construct_graph(
         node_list: List[Node],
         pairwise_relations: Dict[int, List[Tuple[str, str]]]
-    ) -> List[Node]:
+    ) -> List[List[Node]]:
     """
         Constructs a graph from the given information of known
         nodes and their pairwise relationships with each other.
@@ -210,17 +382,15 @@ def construct_graph(
         assert(node.id not in known.keys())
         known.update({node.id: node})
 
-    for degree in range(DEGREE_CAP):
-        to_assign = pairwise_relations.get(degree)
-
-        # Extrapolate first
-        for node in node_list:
-            node.extrapolate()
+    # Extrapolate first
+    for node in node_list:
+        node.extrapolate()
         
         # Begin assigning.
-
-    ret = _visit_nodes(node_list)
-    return ret
+    results = []
+    _assign_helper(pairwise_relations.get('1'), known, node_list, results, 0)
+    print(results)
+    return results
 
 def deepcopy_graph(node_list: List[Node]) -> List[Node]:
     """
