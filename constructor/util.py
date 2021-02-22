@@ -110,4 +110,3 @@ def visualize_graph(nodes: List[Node], filename):
     cur = path.dirname(__file__)
     plt.savefig(path.join(cur, f'../output/{filename}'), dpi=300)
     plt.clf()
-

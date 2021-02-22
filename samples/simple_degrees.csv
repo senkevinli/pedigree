@@ -1,5 +1,2 @@
-Person A,Person B,Degree,
-B,C,1,
-A,B,1,
-A,C,1,
-,,,
+Person A,Person B,Degree
+A,C,1

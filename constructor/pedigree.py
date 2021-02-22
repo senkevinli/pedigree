@@ -97,58 +97,6 @@ class Node:
 
         assert len(self.parents) == 2
 
-        # # Give two full siblings of each gender.
-        # Node.filler_id += 1
-        # fem_sibling = Node(
-        #     str(Node.filler_id),
-        #     True,
-        #     mt_dna=self.mt_dna,
-        #     parents=self.parents,   
-        # )
-        # Node.filler_id += 1
-        # male_sibling = Node(
-        #     str(Node.filler_id),
-        #     False,
-        #     mt_dna=self.mt_dna,
-        #     y_chrom=self.parents[1].y_chrom,
-        #     parents=self.parents
-        # )
-
-        # fem_sibling.siblings += [male_sibling, self]
-        # male_sibling.siblings += [male_sibling, self]
-
-        # for parent in self.parents:
-        #     parent.children += [male_sibling, fem_sibling]
-
-        # # Make filler partner.
-        # Node.filler_id += 1
-        # partner = Node(
-        #     str(Node.filler_id),
-        #     not self.female,
-        #     partners=[self]
-        # )
-        # self.partners.append(partner)
-
-        # # Give two children of each gender.
-        # Node.filler_id += 1
-        # fem_child = Node(
-        #     str(Node.filler_id),
-        #     True,
-        #     mt_dna=self.mt_dna if self.female else None,
-        #     parents=(self, partner) if self.female else (partner, self) 
-        # )
-        # Node.filler_id += 1
-        # male_child = Node(
-        #     str(Node.filler_id),
-        #     False,
-        #     mt_dna=self.mt_dna if self.female else None,
-        #     y_chrom=self.y_chrom if not self.female else None,
-        #     parents=(self, partner) if self.female else (partner, self)
-        # )
-
-        # partner.children += [fem_child, male_child]
-        # self.children += [fem_child, male_child]
-
 def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
         Returns a complete list of nodes.
@@ -347,7 +295,9 @@ def _assign_helper(
                 else:
                     # Must use father, since this tells us the most information.
                     father = male_node_parents[1]
-                    mother = male_node_parents[0]
+                    mother = female_node_parents[0]
+                    print(mother)
+                    print(father)
                 orig_mother_children = [child for child in mother.children]
                 orig_father_children = [child for child in father.children]
                 orig_father_partners = [child.parents[0] for child in father.children]
@@ -375,43 +325,28 @@ def _assign_helper(
 
                         
             else:
+                # Don't share mtDNA. Must be father/daughter.
+
                 orig_female_node_parents = female_node.parents
-                # Must be father/daughter.
+
                 if female_node.parents[1].occupied and \
                    female_node.parents[1] != male_node:
-                    return # Configuration is impossible.
+
+                    # Configuration is impossible.
+                    return 
                 elif female_node.parents[1] == male_node:
+
+                    # Confirming existing relationship, continue.
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
                 else:
-                    orig_female_node_parents = female_node.parents
-                    mother = female_node.parents[0]
-                    orig_mother_children = [child for child in mother.children]
-                    orig_father_children = [child for child in male_node.children]
-                    female_node.parents = (mother, male_node)
-                    male_node.children.append(female_node)
-                    # # Add children of daughter's siblings.
-                    # for child in mother.children:
-                    #     if child not in male_node.children:
-                    #         child.parents = (mother, male_node)
-                    #         male_node.children.append(child)
-                    # for child in male_node.children:
-                    #     if child not in mother.children:
-                    #         child.parents = (mother, male_node)
-                    #         mother.children.append(child)
-                    # Recurse.
+
+                    # Assign parental relationship.
+                    orig_female_node_parents = _assign_parental(female_node, male_node)
+
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
 
                     female_node.parents = orig_female_node_parents
                     male_node.children.remove(female_node)
-                    # for child in male_node.children:
-                    #     if child in orig_mother_children:
-                    #         child.parents = orig_female_node_parents 
-                    #         male_node.children.remove(child)
-
-                    # for child in mother.children:
-                    #     if child in orig_father_children:
-                    #         child.parents = (male_node.children[0].parents[0], male_node)
-                    #         mother.children.remove(child)
 
     # Case that source and dest are both females.
     else:
@@ -421,7 +356,36 @@ def _assign_helper(
         else:
             # No configuration works here.
             return
-    
+
+# ------ ASSIGNMENT SUBHELPER METHODS ------
+
+def _assign_parental(child: Node, parent: Node) -> Tuple[Node]:
+    """
+        Helper function for assigning parental relationships between
+        `child` and `parent`. Returns the Node tuple of the original
+        parents of `child`. Returned value is used to backtrack.
+    """
+
+    assert(child is not None)
+    assert(parent is not None)
+    assert(child.parents is not None)
+    assert(parent.children is not None)
+
+    orig_mother = child.parents[0]
+    orig_father = child.parents[1]
+
+    orig_mother_children = orig_mother.children
+    orig_father_children = orig_father.children
+
+    # Begin assignment.
+    parent.children.append(child)
+
+    child.parents = (parent, orig_father) if parent.female else (orig_mother, parent)
+ 
+    return (orig_mother, orig_father)
+
+
+
 def _construct_helper(
         relations: Dict[int, List[Tuple[str, str]]],
         node_map: Dict[str, Node],
@@ -441,23 +405,6 @@ def _construct_helper(
 
     for i, relation in enumerate(to_assign):
         pass
-
-    # for degree in node_map.keys():
-    #     degree_nodes = node_map.get(degree)
-    #     for src, dest in degree_nodes:
-    #         src = node_map.get(src)
-    #         dest = node_map.get(dest)
-
-    #         both_male = not src.female and not dest.female
-    #         one_female = (src.female and not dest.female) or \
-    #                      (dest.female and not src.female)
-
-    #         if both_male:
-    #             pass
-    #         elif one_female:
-    #             pass
-    #         else:
-    #             pass
 
 
 def construct_graph(
