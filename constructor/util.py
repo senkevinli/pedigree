@@ -15,7 +15,6 @@ from os import path
 
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
-OUTPUT_NAME = 'ex.png'
 LABEL_SIZE = 5
 NODE_SIZE = 100
 
@@ -61,7 +60,7 @@ def _format_label(node):
            f'MtDna: {node.mt_dna}\n' \
            f'YChrom: {node.y_chrom}'
 
-def visualize_graph(nodes: List[Node]):
+def visualize_graph(nodes: List[Node], filename):
     """
         Constructs a networkx graph from the given nodes
         and then displays it through matplotlib.
@@ -70,7 +69,6 @@ def visualize_graph(nodes: List[Node]):
     G = nx.DiGraph()
     
     ids = [node.id for node in nodes]
-
     females = [node for node in nodes if node.female]
     males = [node for node in nodes if not node.female]
 
@@ -110,5 +108,6 @@ def visualize_graph(nodes: List[Node]):
     plt.axis('off')
     
     cur = path.dirname(__file__)
-    plt.savefig(path.join(cur, f'../output/{OUTPUT_NAME}'), dpi=300)
+    plt.savefig(path.join(cur, f'../output/{filename}'), dpi=300)
+    plt.clf()
 

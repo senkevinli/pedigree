@@ -8,7 +8,6 @@ from constructor.util import parse_data, visualize_graph
 from typing import List
 from os import path
 
-OUTPUT_NAME = 'ex.png'
 INPUT_BIO = 'simple_bio.csv'
 INPUT_DEGREE = 'simple_degrees.csv'
 
@@ -22,7 +21,8 @@ def main():
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
     complete_nodes = construct_graph(node_list, mappings)
-    visualize_graph(complete_nodes[0])
+    for i, node_list in enumerate(complete_nodes):
+        visualize_graph(node_list, f'graph{i}')
 
 if __name__ == '__main__':
     main()
