@@ -3,6 +3,7 @@
 """ For traversing the pedigree and other related operations. """
 
 from __future__ import annotations
+from contextlib import contextmanager
 #`from constructor.util import visualize_graph
 from copy import deepcopy
 from typing import Tuple, List, Dict, Set, Optional
@@ -254,11 +255,14 @@ def _assign_helper(
     # Case that one is female and the other is male.
     elif (not src.female and dest.female) or \
          (src.female and not dest.female):
+
             male_node = src if dest.female else dest
             female_node = src if src.female else dest
             if share_mt_dna:
+
                 # Either siblings or son/mother.
                 # Case 1 siblings.
+
                 male_node_parents = male_node.parents
                 female_node_parents = female_node.parents
                 mother = None
@@ -334,19 +338,14 @@ def _assign_helper(
 
                     # Configuration is impossible.
                     return 
-                elif female_node.parents[1] == male_node:
+                if female_node.parents[1] == male_node:
 
                     # Confirming existing relationship, continue.
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
                 else:
-
-                    # Assign parental relationship.
-                    orig_female_node_parents = _assign_parental(female_node, male_node)
-
-                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-
-                    female_node.parents = orig_female_node_parents
-                    male_node.children.remove(female_node)
+                    
+                    with _assign_parental(female_node, male_node):
+                        _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
 
     # Case that source and dest are both females.
     else:
@@ -359,31 +358,163 @@ def _assign_helper(
 
 # ------ ASSIGNMENT SUBHELPER METHODS ------
 
-def _assign_parental(child: Node, parent: Node) -> Tuple[Node]:
+@contextmanager
+def _assign_parental (child: Node, parent: Node) -> Tuple[bool, Node]:
     """
         Helper function for assigning parental relationships between
         `child` and `parent`. Returns the Node tuple of the original
         parents of `child`. Returned value is used to backtrack.
     """
 
-    assert(child is not None)
-    assert(parent is not None)
-    assert(child.parents is not None)
-    assert(parent.children is not None)
+    try:
+        assert(child is not None)
+        assert(parent is not None)
+        assert(child.parents is not None)
+        assert(parent.children is not None)
 
-    orig_mother = child.parents[0]
-    orig_father = child.parents[1]
+        orig_mother = child.parents[0]
+        orig_father = child.parents[1]
 
-    orig_mother_children = orig_mother.children
-    orig_father_children = orig_father.children
+        orig_mother_children = orig_mother.children
+        orig_father_children = orig_father.children
 
-    # Begin assignment.
-    parent.children.append(child)
+        # Begin assignment.
+        parent.children.append(child)
 
-    child.parents = (parent, orig_father) if parent.female else (orig_mother, parent)
+        child.parents = (parent, orig_father) if parent.female else (orig_mother, parent)
+        yield
+
+    finally:
+        child.parents = (orig_mother, orig_father)
+        parent.children.remove(child)
+
+
+    
  
     return (orig_mother, orig_father)
 
+# def _assign_sibling (sib1: Node, sib2: Node) -> None:
+#     """
+#         Assigns `sib1` and `sib2` as siblings.
+#     """
+
+#     sib1_parents = sib1.parents
+#     sib2_parents = sib2.parents
+
+#     mother = None
+#     father = None
+
+#     assert(sib1_parents is not None)
+#     assert(sib2_parents is not None)
+
+#     # Confirming existing relationship
+#     if sib1_parents[0] == sib2_parents[0] and \
+#        sib1_parents[1] == sib2_parents[1]:
+#         return (True, None)
+
+#     all_parents = sib1_parents + sib2_parents
+#     all_parents = list({node for node in all_parents if node.occupied})
+
+#     if len(all_parents) > 2:
+#         # More than two unique occupied nodes, impossible to merge.
+#         return (False, None)
+
+#     if len(all_parents) == 2:
+#         # Exactly two occupied parents.
+#         if all_parents[0].female == all_parents[1].female:
+#             # Same gender, wrong configuration.
+#             return (False, None)
+#         father = all_parents[0] if all_parents[1].female else all_parents[1]
+#         mother = all_parents[0] if all_parents[0].female else all_parents[1]
+    
+#     elif len(all_parents) == 1:
+#         if all_parents[0].female:
+#             mother = all_parents[0]
+#             # Should use the father of the male child if there is one.
+#             father = sib1_parents[1] if not sib1.female else sib2_parents[1]
+#         else:
+#             father = all_parents[0]
+#             # Using any mother should be ok.
+#             mother = sib1_parents[0]
+#     else:
+#         # No occupied parents, anything goes as long as we reserve one father
+#         # from the male sibling.
+#         father = sib1_parents[1] if not sib1.female else sib2_parents[1]
+#         mother = sib1_parents[0]
+    
+#     orig_mother_children = [child for child in mother.children]
+#     orig_father_children = [child for child in father.children]
+
+#     orig_father_partners = [child.parents[0] for child in father.children]
+#     orig_mother_partners = [child.parents[1] for child in mother.children]
+
+#     f_children = set(father.children)
+#     m_children = set(mother.children)
+
+#     father_to_delete = sib1_parents[1] if sib1_parents[1] is not father else sib2_parents[1]
+#     mother_to_delete = sib1_parents[0] if sib1_parents[0] is not mother else sib2_parents[0]
+
+#     for child in 
+
+    # occupied = set(occupied)
+    # occupied = list(occupied)
+
+    # if len(occupied) > 2:
+    #     # More than two unique occupied nodes, impossible to merge.
+    #     return (False, None)
+
+    # if len(occupied) == 2:
+        
+    #     if occupied[0].female == occupied[1].female:
+    #         # Same gender, wrong configuration.
+    #         return (False, None)
+
+    #     father = occupied[0] if occupied[1].female else occupied[1]
+    #     mother = occupied[0] if occupied[0].female else occupied[1]
+
+    # elif len(occupied) == 1:
+    #     if occupied[0].female:
+    #         mother = occupied[0]
+    #         father = male_node_parents[1]
+    #     else:
+    #         mother = male_node_parents[0]
+    #         father = occupied[0]
+    # else:
+    #     # Must use father, since this tells us the most information.
+    #     father = male_node_parents[1]
+    #     mother = female_node_parents[0]
+    #     print(mother)
+    #     print(father)
+
+    # orig_mother_children = [child for child in mother.children]
+    # orig_father_children = [child for child in father.children]
+
+    # orig_father_partners = [child.parents[0] for child in father.children]
+    # orig_mother_partners = [child.parents[1] for child in mother.children]
+
+    # f_children = set(father.children)
+    # m_children = set(mother.children)
+
+    # for child in mother.children:
+    #     if child not in f_children:
+    #         child.parents = (mother, father)
+    #         father.children.append(child)
+
+    # for child in father.children:
+    #     if child not in mother.children:
+    #         child.parents = (mother, father)
+    #         mother.children.append(child)
+
+    # _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+
+    # father.children = orig_father_children
+    # mother.children = orig_mother_children
+
+    # for i, child in enumerate(mother.children):
+    #     child.parents = (mother, orig_mother_partners[i])
+    # for i, child in enumerate(father.children):
+    #     child.parents = (father, orig_father_partners[i])
+    # return
 
 
 def _construct_helper(
