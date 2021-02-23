@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
 """ Runs pedigree construction on sample data. """
-import csv
 
 from constructor.pedigree import construct_graph
 from constructor.util import parse_data, visualize_graph
-from typing import List
 from os import path
 
 INPUT_BIO = 'simple_bio.csv'
