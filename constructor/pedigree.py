@@ -263,69 +263,10 @@ def _assign_helper(
                 # Either siblings or son/mother.
                 # Case 1 siblings.
 
-                male_node_parents = male_node.parents
-                female_node_parents = female_node.parents
-                mother = None
-                father = None
-
-                assert(male_node_parents is not None)
-                assert(female_node_parents is not None)
-
-                # Confirming existing relationship
-                if male_node_parents[0] == female_node_parents[0] and \
-                   male_node_parents[1] == female_node_parents[1]:
-                   _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-                   return
-
-                total = male_node_parents + female_node_parents
-                occupied = [node for node in total if node.occupied]
-                occupied = set(occupied)
-                occupied = list(occupied)
-                if len(occupied) > 2:
-                    return
-                if len(occupied) == 2:
-                    # Same gender, wrong configuration.
-                    if occupied[0].female == occupied[1].female:
-                        return
-                    father = occupied[0] if occupied[1].female else occupied[1]
-                    mother = occupied[0] if occupied[0].female else occupied[1]
-                elif len(occupied) == 1:
-                    if occupied[0].female:
-                        mother = occupied[0]
-                        father = male_node_parents[1]
-                    else:
-                        mother = male_node_parents[0]
-                        father = occupied[0]
-                else:
-                    # Must use father, since this tells us the most information.
-                    father = male_node_parents[1]
-                    mother = female_node_parents[0]
-                    print(mother)
-                    print(father)
-                orig_mother_children = [child for child in mother.children]
-                orig_father_children = [child for child in father.children]
-                orig_father_partners = [child.parents[0] for child in father.children]
-                orig_mother_partners = [child.parents[1] for child in mother.children]
-
-                for child in mother.children:
-                    if child not in father.children:
-                        child.parents = (mother, father)
-                        father.children.append(child)
-                for child in father.children:
-                    if child not in mother.children:
-                        child.parents = (mother, father)
-                        mother.children.append(child)
-
-                _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-
-                father.children = orig_father_children
-                mother.children = orig_mother_children
-
-                for i, child in enumerate(mother.children):
-                    child.parents = (mother, orig_mother_partners[i])
-                for i, child in enumerate(father.children):
-                    child.parents = (father, orig_father_partners[i])
-                return
+                with _assign_sibling(male_node, female_node) as ok:
+                    if ok:
+                        _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+                
 
                         
             else:
@@ -398,20 +339,24 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     # Confirming existing relationship
     if sib1_parents[0] == sib2_parents[0] and \
     sib1_parents[1] == sib2_parents[1]:
-        return (True, None)
+        yield True
+        return
 
     all_parents = sib1_parents + sib2_parents
     all_parents = list({node for node in all_parents if node.occupied})
 
     if len(all_parents) > 2:
         # More than two unique occupied nodes, impossible to merge.
-        return (False, None)
+        yield False
+        return
 
     if len(all_parents) == 2:
         # Exactly two occupied parents.
         if all_parents[0].female == all_parents[1].female:
             # Same gender, wrong configuration.
-            return (False, None)
+            yield False
+            return
+
         father = all_parents[0] if all_parents[1].female else all_parents[1]
         mother = all_parents[0] if all_parents[0].female else all_parents[1]
     
@@ -446,7 +391,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         mother.children.append(child)
         child.parents = (mother, child.parents[1])
     
-    yield
+    yield True
 
     father.children = orig_father_children
     mother.children = orig_mother_children
