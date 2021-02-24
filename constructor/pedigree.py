@@ -242,22 +242,28 @@ def _assign_parental (child: Node, parent: Node) -> None:
         yield True
         return
 
+    if child is parent.parents[0] or child is parent.parents[1]:
+        yield False
+        return
+
     if (orig_mother.occupied and parent.female) or \
        (orig_father.occupied and parent.male):
        yield False
        return
 
     # Begin assignment.
-    parent.children.append(child)
+    to_replace = orig_father if not parent.female else orig_mother
+    orig_parent_children = [node for node in parent.children]
 
-    child.parents = (parent, orig_father) if parent.female else (orig_mother, parent)
-    replaced = orig_father if not parent.female else orig_mother
-    replaced.children.remove(child)
+    for child in to_replace.children:
+        child.parents = (parent, child.parents[1]) if parent.female else (child.parents[0], parent)
+        parent.children.append(child)
+
     yield True
 
-    child.parents = (orig_mother, orig_father)
-    parent.children.remove(child)
-    replaced.children.append(child)
+    parent.children = orig_parent_children
+    for child in to_replace.children:
+        child.parents = (to_replace, child.parents[1]) if to_replace.female else (child.parents[0], to_replace)
 
 @contextmanager
 def _assign_sibling (sib1: Node, sib2: Node) -> None:
