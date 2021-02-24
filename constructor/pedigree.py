@@ -149,105 +149,24 @@ def _assign_helper(
 
     # Case that source and dest are both male.
     if not src.female and not dest.female:
+        print('both male')
         share_y = src.y_chrom == dest.y_chrom
         if share_y and share_mt_dna:
             # Must be siblings.
-
-            # First, add parental linkages. Change references 
-            # only for those that are occupied.
-            src_parents = src.parents
-            dest_parents = dest.parents
-
-            assert(src_parents is not None)
-            assert(dest_parents is not None)
-
-            # Confirming existing relationship
-            if src_parents[0] == dest_parents[0] and \
-               src_parents[1] == dest_parents[1]:
-               _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-               return
-            else:
-                total = src_parents + dest_parents
-                occupied = [node for node in total if node.occupied]
-
-                # Two or more occupied parents from different nodes, wrong configuration.
-                if len(occupied) > 2:
-                    return
-                if len(occupied) == 2:
-                    # Same gender, wrong configuration.
-                    if occupied[0].female == occupied[1].female:
-                        return
-                    # Different genders, merge.
-                    father = occupied[0] if not occupied[0].female else occupied[1]
-                    mother = occupied[1] if occupied[0].female else occupied[1]
-
-                    # Save state to revert.
-                    orig_src_parents = src.parents
-                    orig_dest_parents = dest.parents
-                    orig_father_children = [child for child in father.children]
-                    orig_mother_children = [child for child in mother.children]
-
-                    src.parents = (mother, father)
-                    dest.parents = (mother, father)
-
-                    for child in mother.children:
-                        if child not in father.children:
-                            father.children.append(child)
-                            child.parents = (mother, father)
-                    for child in father.children:
-                        if child not in mother.children:
-                            mother.children.append(child)
-                            child.parents = (mother, father)
-
+            with _assign_sibling(src, dest) as ok:
+                if ok:
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-
-                    src.parents = orig_src_parents
-                    dest.parents = orig_dest_parents
-                    for child in mother.children:
-                        if child not in orig_mother_children:
-                            child
-
-
         elif share_y:
             # Either father/son or son/father.
 
             # Father/son first.
-            if dest.parents[1].occupied and \
-               dest.parents[1] != src:
-               return
-            elif dest.parents[1] == src:
-                _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-            else:
-                orig_dest_parents = dest.parents
-                mother = dest.parents[0]
-                orig_mother_children = [child for child in mother.children]
-                orig_src_children = [child for child in src.children]
-                dest.parents = (mother, src)
-                src.children.append(dest)
-
-                # for child in mother.children:
-                #     if child not in src.children:
-                #         child.parents = (mother, src)
-                #         src.children.append(child)
-                # for child in src.children:
-                #     if child not in mother.children:
-                #         child.parents = (mother, src)
-                #         mother.children.append(child)
-                _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-
-                dest.parents = orig_dest_parents
-                src.children.remove(dest)
-                # for child in src.children:
-                #     if child in orig_mother_children:
-                #         child.parents = orig_dest_parents
-                #         src.children.remove(child)
-
-                # for child in mother.children:
-                #     if child in orig_src_children:
-                #         child.parents = (src.children[0].parents[0], src)
-                #         mother.children.remove(child)
-
-            pass
+            with _assign_parental(dest, src) as ok:
+                if ok:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+            # Son/father.
+            with _assign_parental(src, dest) as ok:
+                if ok:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
         else:
             # No configuration works here.
             return
@@ -255,43 +174,49 @@ def _assign_helper(
     # Case that one is female and the other is male.
     elif (not src.female and dest.female) or \
          (src.female and not dest.female):
-
+            print('one male one female')
             male_node = src if dest.female else dest
             female_node = src if src.female else dest
             if share_mt_dna:
 
                 # Either siblings or son/mother.
-                # Case 1 siblings.
 
+                # Case 1 siblings.
                 with _assign_sibling(male_node, female_node) as ok:
                     if ok:
                         _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-                
 
-                        
+                # Case 2 parental.
+                with _assign_parental(male_node, female_node) as ok:
+                    if ok:
+                        _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+                
             else:
                 # Don't share mtDNA. Must be father/daughter.
-
-                orig_female_node_parents = female_node.parents
-
-                if female_node.parents[1].occupied and \
-                   female_node.parents[1] != male_node:
-
-                    # Configuration is impossible.
-                    return 
-                if female_node.parents[1] == male_node:
-
-                    # Confirming existing relationship, continue.
-                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-                else:                
-                    with _assign_parental(female_node, male_node):
+                with _assign_parental(female_node, male_node) as ok:
+                    if ok:
                         _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
 
     # Case that source and dest are both females.
     else:
+        print('two females')
         if share_mt_dna:
             # May be siblings or daughter/mother or mother/daughter.
-            pass
+            
+            # Case 1 siblings.
+            with _assign_sibling(src, dest) as ok:
+                if ok:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+            
+            # Case 2 daughter/mother.
+            with _assign_parental(src, dest) as ok:
+                if ok:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
+
+            # Case 3 mother/daugther.
+            with _assign_parental(src, dest) as ok:
+                if ok:
+                    _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
         else:
             # No configuration works here.
             return
@@ -313,14 +238,26 @@ def _assign_parental (child: Node, parent: Node) -> None:
     orig_mother = child.parents[0]
     orig_father = child.parents[1]
 
+    if parent is orig_mother or parent is orig_father:
+        yield True
+        return
+
+    if (orig_mother.occupied and parent.female) or \
+       (orig_father.occupied and parent.male):
+       yield False
+       return
+
     # Begin assignment.
     parent.children.append(child)
 
     child.parents = (parent, orig_father) if parent.female else (orig_mother, parent)
-    yield
+    replaced = orig_father if not parent.female else orig_mother
+    replaced.children.remove(child)
+    yield True
 
     child.parents = (orig_mother, orig_father)
     parent.children.remove(child)
+    replaced.children.append(child)
 
 @contextmanager
 def _assign_sibling (sib1: Node, sib2: Node) -> None:
