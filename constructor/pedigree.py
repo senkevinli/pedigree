@@ -259,7 +259,7 @@ def _assign_parental (child: Node, parent: Node) -> None:
         return
 
     if (orig_mother.occupied and parent.female) or \
-       (orig_father.occupied and parent.male):
+       (orig_father.occupied and not parent.female):
        yield False
        return
 
@@ -346,21 +346,25 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     to_d_mother_children = [child for child in mother_to_delete.children]
 
     # Check for cycles first.
-    for child in father_to_delete.children:
-        if child.search_descendants(father):
-            yield False
-            return
-    for child in mother_to_delete.children:
-        if child.search_descendants(mother):
-            yield False
-            return
+    if father_to_delete is not father:
+        for child in father_to_delete.children:
+            if child.search_descendants([father]):
+                yield False
+                return
+    if mother_to_delete is not mother:
+        for child in mother_to_delete.children:
+            if child.search_descendants([mother]):
+                yield False
+                return
+    if father_to_delete is not father:
+        for child in father_to_delete.children:
+            father.children.append(child)
+            child.parents = (child.parents[0], father)
 
-    for child in father_to_delete.children:
-        father.children.append(child)
-        child.parents = (child.parents[0], father)
-    for child in mother_to_delete.children:
-        mother.children.append(child)
-        child.parents = (mother, child.parents[1])
+    if mother_to_delete is not mother:
+        for child in mother_to_delete.children:
+            mother.children.append(child)
+            child.parents = (mother, child.parents[1])
     
     yield True
 
