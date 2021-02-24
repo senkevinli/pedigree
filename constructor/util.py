@@ -5,11 +5,12 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 import csv
+import glob
 
 from networkx.drawing.nx_pydot import graphviz_layout
 from typing import List
 from .pedigree import Node
-from os import path
+from os import path, remove
 
 # Configurations.
 
