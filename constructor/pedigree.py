@@ -345,6 +345,16 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     to_d_father_children = [child for child in father_to_delete.children]
     to_d_mother_children = [child for child in mother_to_delete.children]
 
+    # Check for cycles first.
+    for child in father_to_delete.children:
+        if child.search_descendants(father):
+            yield False
+            return
+    for child in mother_to_delete.children:
+        if child.search_descendants(mother):
+            yield False
+            return
+
     for child in father_to_delete.children:
         father.children.append(child)
         child.parents = (child.parents[0], father)
