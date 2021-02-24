@@ -98,6 +98,21 @@ class Node:
 
         assert len(self.parents) == 2
 
+    def search_descendants(self, nodes: List[Node]) -> bool:
+        """
+            Searches children for the specified `node`. Returns
+            true if found, false otherwise. Requires that there
+            must not be a cycle in the graph.
+        """
+        if self.children is None or len(self.children) == 0:
+            return False
+        for child in self.children:
+            if child in nodes:
+                return True
+            if child.search_descendants(nodes):
+                return True
+        return False
+
 def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
         Returns a complete list of nodes.
@@ -149,7 +164,6 @@ def _assign_helper(
 
     # Case that source and dest are both male.
     if not src.female and not dest.female:
-        print('both male')
         share_y = src.y_chrom == dest.y_chrom
         if share_y and share_mt_dna:
             # Must be siblings.
@@ -174,7 +188,6 @@ def _assign_helper(
     # Case that one is female and the other is male.
     elif (not src.female and dest.female) or \
          (src.female and not dest.female):
-            print('one male one female')
             male_node = src if dest.female else dest
             female_node = src if src.female else dest
             if share_mt_dna:
@@ -199,7 +212,6 @@ def _assign_helper(
 
     # Case that source and dest are both females.
     else:
-        print('two females')
         if share_mt_dna:
             # May be siblings or daughter/mother or mother/daughter.
             
@@ -254,6 +266,12 @@ def _assign_parental (child: Node, parent: Node) -> None:
     # Begin assignment.
     to_replace = orig_father if not parent.female else orig_mother
     orig_parent_children = [node for node in parent.children]
+
+    # Cycle detection first.
+    for child in to_replace.children:
+        if child.search_descendants([parent]):
+            yield False
+            return
 
     for child in to_replace.children:
         child.parents = (parent, child.parents[1]) if parent.female else (child.parents[0], parent)
@@ -326,6 +344,16 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
 
     to_d_father_children = [child for child in father_to_delete.children]
     to_d_mother_children = [child for child in mother_to_delete.children]
+
+    # Check for cycles first.
+    for child in father_to_delete.children:
+        if child.search_descendants(father):
+            yield False
+            return
+    for child in mother_to_delete.children:
+        if child.search_descendants(mother):
+            yield False
+            return
 
     for child in father_to_delete.children:
         father.children.append(child)
