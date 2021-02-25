@@ -226,7 +226,7 @@ def _assign_helper(
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
 
             # Case 3 mother/daugther.
-            with _assign_parental(src, dest) as ok:
+            with _assign_parental(dest, src) as ok:
                 if ok:
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
         else:
@@ -250,6 +250,10 @@ def _assign_parental (child: Node, parent: Node) -> None:
     orig_mother = child.parents[0]
     orig_father = child.parents[1]
 
+    if child.parents[0] == parent.parents[0] and \
+       child.parents[1] == parent.parents[1]:
+        yield False
+        return
     if parent is orig_mother or parent is orig_father:
         yield True
         return
@@ -297,6 +301,9 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     assert(sib1_parents is not None)
     assert(sib2_parents is not None)
 
+    if sib1.search_descendants([sib2]) or sib2.search_descendants([sib1]):
+        yield False
+        return
     # Confirming existing relationship
     if sib1_parents[0] == sib2_parents[0] and \
     sib1_parents[1] == sib2_parents[1]:
@@ -312,6 +319,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         return
 
     if len(all_parents) == 2:
+        print('both occupied')
         # Exactly two occupied parents.
         if all_parents[0].female == all_parents[1].female:
             # Same gender, wrong configuration.
@@ -322,6 +330,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         mother = all_parents[0] if all_parents[0].female else all_parents[1]
     
     elif len(all_parents) == 1:
+        print('one occupied')
         if all_parents[0].female:
             mother = all_parents[0]
             # Should use the father of the male child if there is one.
@@ -331,6 +340,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
             # Using any mother should be ok.
             mother = sib1_parents[0]
     else:
+        print('none occupied')
         # No occupied parents, anything goes as long as we reserve one father
         # from the male sibling.
         father = sib1_parents[1] if not sib1.female else sib2_parents[1]
@@ -347,11 +357,19 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
 
     # Check for cycles first.
     if father_to_delete is not father:
+        if father_to_delete.search_descendants([father, mother]):
+            print('yass')
+            yield False
+            return
         for child in father_to_delete.children:
             if child.search_descendants([father]):
                 yield False
                 return
     if mother_to_delete is not mother:
+        if mother_to_delete.search_descendants([father, mother]):
+            print('bass')
+            yield False
+            return
         for child in mother_to_delete.children:
             if child.search_descendants([mother]):
                 yield False

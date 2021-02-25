@@ -7,8 +7,8 @@ from constructor.pedigree import construct_graph
 from constructor.util import parse_data, visualize_graph
 from os import path, remove
 
-INPUT_BIO = 'simple_bio.csv'
-INPUT_DEGREE = 'simple_degrees.csv'
+INPUT_BIO = 'siblings_bio.csv'
+INPUT_DEGREE = 'siblings_degrees.csv'
 
 def main():
 
