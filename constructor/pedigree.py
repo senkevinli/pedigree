@@ -144,6 +144,11 @@ def _assign_helper(
         all_possible: List[List[Node]],
         idx: int
     ) -> None:
+    """
+        Recursive helper for assignment. Assigns according to 
+        first degree relationships. Configurations that work
+        are placed into `all_possible`.
+    """
     if idx == len(relation):
         all_possible.append(deepcopy_graph(node_list))
         return
@@ -254,6 +259,7 @@ def _assign_parental (child: Node, parent: Node) -> None:
        child.parents[1] == parent.parents[1]:
         yield False
         return
+
     if parent is orig_mother or parent is orig_father:
         yield True
         return
@@ -358,22 +364,22 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     # Check for cycles first.
     if father_to_delete is not father:
         if father_to_delete.search_descendants([father, mother]):
-            print('yass')
             yield False
             return
         for child in father_to_delete.children:
             if child.search_descendants([father]):
                 yield False
                 return
+
     if mother_to_delete is not mother:
         if mother_to_delete.search_descendants([father, mother]):
-            print('bass')
             yield False
             return
         for child in mother_to_delete.children:
             if child.search_descendants([mother]):
                 yield False
                 return
+
     if father_to_delete is not father:
         for child in father_to_delete.children:
             father.children.append(child)
@@ -385,6 +391,8 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
             child.parents = (mother, child.parents[1])
     
     yield True
+
+    # Backtracking.
 
     father.children = orig_father_children
     mother.children = orig_mother_children
@@ -439,13 +447,13 @@ def construct_graph(
     for node in node_list:
         node.extrapolate()
         
-        # Begin assigning.
-    results = []
-    #print(node_list)
-    _assign_helper(pairwise_relations.get('1'), known, node_list, results, 0)
-    #print(node_list)
-    results.append(_visit_nodes(node_list))
-    return results
+    # Begin assigning.
+    done = False
+    while (not done):
+        workable_graphs =[]
+        _assign_helper(pairwise_relations.get(1), known, node_list, workable_graphs, 0)
+        # TODO: finish this.
+    return
 
 def deepcopy_graph(node_list: List[Node]) -> List[Node]:
     """
