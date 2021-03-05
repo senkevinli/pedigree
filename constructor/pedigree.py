@@ -112,6 +112,26 @@ class Node:
             if child.search_descendants(nodes):
                 return True
         return False
+    
+    def get_first_degree_rel(self) -> List[Node]:
+        """
+            Returns all first degree relatives of the current node.
+        """
+        ret = []
+
+        # Parents.
+        ret.append(self.parents[0])
+        ret.append(self.parents[1])
+
+        # Children.
+        ret += self.children
+
+        # Siblings.
+        for child in self.parents[0].children:
+            if child.parents[1] == self.parents[1] and child != self:
+                ret.append(child)
+
+        return ret
 
 def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
@@ -319,7 +339,6 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         return
 
     if len(all_parents) == 2:
-        print('both occupied')
         # Exactly two occupied parents.
         if all_parents[0].female == all_parents[1].female:
             # Same gender, wrong configuration.
@@ -330,7 +349,6 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         mother = all_parents[0] if all_parents[0].female else all_parents[1]
     
     elif len(all_parents) == 1:
-        print('one occupied')
         if all_parents[0].female:
             mother = all_parents[0]
             # Should use the father of the male child if there is one.
@@ -340,7 +358,6 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
             # Using any mother should be ok.
             mother = sib1_parents[0]
     else:
-        print('none occupied')
         # No occupied parents, anything goes as long as we reserve one father
         # from the male sibling.
         father = sib1_parents[1] if not sib1.female else sib2_parents[1]
@@ -358,7 +375,6 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     # Check for cycles first.
     if father_to_delete is not father:
         if father_to_delete.search_descendants([father, mother]):
-            print('yass')
             yield False
             return
         for child in father_to_delete.children:
@@ -367,7 +383,6 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
                 return
     if mother_to_delete is not mother:
         if mother_to_delete.search_descendants([father, mother]):
-            print('bass')
             yield False
             return
         for child in mother_to_delete.children:
@@ -418,6 +433,44 @@ def _construct_helper(
     for i, relation in enumerate(to_assign):
         pass
 
+def _prune_graphs(
+    first_degrees: List[Tuple[str, str]],
+    node_map: Dict[str, Node],
+    occupied_nodes: List[Node],
+    all_possible: List[List[Node]]
+) -> List[List[Node]]:
+    """
+        Prunes graphs that assign first degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+    # Sort the first degrees.
+    ret = []
+    mapped = map(lambda x: sorted(x), first_degrees)
+
+    first_degree_map = {}
+    for rel in mapped:
+        lst = first_degree_map.get(rel[0], [])
+        lst.append(rel[1])
+        first_degree_map.update({rel[0] : lst})
+
+    def _check_graph(graph: List[Node]) -> bool:
+        for node in graph:
+            if node.occupied:
+                first_relatives = node.get_first_degree_rel()
+                for rel in first_relatives:
+                    first, second = (rel.id, node.id) if rel.id < node.id else (node.id, rel.id)
+                    if rel.occupied and second not in first_degree_map.get(first):
+                        print(first, second)
+                        return False
+        return True
+
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+
+    return ret
+
 
 def construct_graph(
         node_list: List[Node],
@@ -441,9 +494,8 @@ def construct_graph(
         
         # Begin assigning.
     results = []
-    #print(node_list)
     _assign_helper(pairwise_relations.get('1'), known, node_list, results, 0)
-    #print(node_list)
+    results = _prune_graphs(pairwise_relations.get('1'), known, node_list, results)
     results.append(_visit_nodes(node_list))
     return results
 
