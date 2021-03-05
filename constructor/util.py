@@ -49,9 +49,9 @@ def parse_data(bios_csv: str, degrees_csv: str):
         #TODO: same issue as above.
         next(reader)
         for row in reader:
-            cur = pairwise_relations.get(row[2], [])
+            cur = pairwise_relations.get(int(row[2]), [])
             cur.append((row[0], row[1]))
-            pairwise_relations.update({row[2] : cur})
+            pairwise_relations.update({int(row[2]) : cur})
     
     print(pairwise_relations)
     return node_list, pairwise_relations

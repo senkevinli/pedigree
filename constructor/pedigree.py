@@ -492,10 +492,12 @@ def construct_graph(
     for node in node_list:
         node.extrapolate()
         
-        # Begin assigning.
+    # Begin assigning
     results = []
-    _assign_helper(pairwise_relations.get('1'), known, node_list, results, 0)
-    results = _prune_graphs(pairwise_relations.get('1'), known, node_list, results)
+    _assign_helper(pairwise_relations.get(1), known, node_list, results, 0)
+    results = _prune_graphs(pairwise_relations.get(1), known, node_list, results)
+
+    # Add back the original graph.
     results.append(_visit_nodes(node_list))
     return results
 
