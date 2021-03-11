@@ -95,7 +95,6 @@ class Node:
                 children=[self]
             )
             self.parents = (mother, father)
-
         assert len(self.parents) == 2
 
     def search_descendants(self, nodes: List[Node]) -> bool:
@@ -460,7 +459,6 @@ def _prune_graphs(
                 for rel in first_relatives:
                     first, second = (rel.id, node.id) if rel.id < node.id else (node.id, rel.id)
                     if rel.occupied and second not in first_degree_map.get(first):
-                        print(first, second)
                         return False
         return True
 
@@ -471,6 +469,19 @@ def _prune_graphs(
 
     return ret
 
+def _mark_and_extrapolate(graphs: List[List[Node]]) -> List[Node]:
+    """ Function for marking the unoccupied nodes and then extrapolating them. """
+    ret = []
+    for graph in graphs:
+        for node in graph:
+            if not node.occupied:
+                node.occupied = True
+                node.extrapolate()
+        ret.append(_visit_nodes(graph))
+    return ret
+
+def _relax_degree():
+    pass
 
 def construct_graph(
         node_list: List[Node],
@@ -493,9 +504,12 @@ def construct_graph(
         node.extrapolate()
         
     # Begin assigning
-    results = []
-    _assign_helper(pairwise_relations.get(1), known, node_list, results, 0)
-    results = _prune_graphs(pairwise_relations.get(1), known, node_list, results)
+    while True:
+        results = []
+        _assign_helper(pairwise_relations.get(1), known, node_list, results, 0)
+        results = _prune_graphs(pairwise_relations.get(1), known, node_list, results)
+        results = _mark_and_extrapolate(results)
+        break
 
     # Add back the original graph.
     results.append(_visit_nodes(node_list))

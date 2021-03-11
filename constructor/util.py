@@ -6,6 +6,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import csv
 import glob
+import re
 
 from networkx.drawing.nx_pydot import graphviz_layout
 from typing import List
@@ -16,6 +17,8 @@ from os import path, remove
 
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
+KNOWN_COLOR = 'yellow'
+
 LABEL_SIZE = 5
 NODE_SIZE = 100
 
@@ -72,9 +75,24 @@ def visualize_graph(nodes: List[Node], filename):
     ids = [node.id for node in nodes]
     females = [node for node in nodes if node.female]
     males = [node for node in nodes if not node.female]
+    
+    colormap_f = []
+    for node in females:
+        if re.search('^[^0-9]+$', node.id):
+            colormap_f.append(KNOWN_COLOR)
+        elif node.occupied:
+            colormap_f.append(OCCUPIED_COLOR)
+        else:
+            colormap_f.append(FREE_COLOR)
 
-    colormap_m = [OCCUPIED_COLOR if node.occupied else FREE_COLOR for node in males]
-    colormap_f = [OCCUPIED_COLOR if node.occupied else FREE_COLOR for node in females]
+    colormap_m = []
+    for node in males:
+        if re.search('^[^0-9]+$', node.id):
+            colormap_m.append(KNOWN_COLOR)
+        elif node.occupied:
+            colormap_m.append(OCCUPIED_COLOR)
+        else:
+            colormap_m.append(FREE_COLOR)
 
     info = {node.id: _format_label(node) for node in nodes}
 
