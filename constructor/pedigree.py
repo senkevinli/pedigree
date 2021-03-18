@@ -177,7 +177,7 @@ def _assign_helper(
     src = node_map.get(src)
     dest = node_map.get(dest)
 
-    share_mt_dna = src.mt_dna == dest.mt_dna
+    share_mt_dna = src.mt_dna == dest.mt_dna or src.mt_dna is None or dest.mt_dna is None
 
     # ------ ASSIGNMENTS ------
 
@@ -207,6 +207,7 @@ def _assign_helper(
     # Case that one is female and the other is male.
     elif (not src.female and dest.female) or \
          (src.female and not dest.female):
+
             male_node = src if dest.female else dest
             female_node = src if src.female else dest
             if share_mt_dna:
@@ -411,6 +412,21 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     for child in to_d_mother_children:
         child.parents = (mother_to_delete, child.parents[1])
 
+def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
+    """
+        Reduces relationship of first and second node by one degree. Returns
+        all possible pairwise arrangements.
+    """
+    ret = []
+    first_rel = first.get_first_degree_rel()
+    for node in first_rel:
+        assert(node.id is not second.id)
+        ret.append((second.id, node.id))
+    second_rel = second.get_first_degree_rel()
+    for node in second_rel:
+        assert(node.id is not first.id)
+        ret.append((first.id, node.id))
+    return ret
 
 def _construct_helper(
         relations: Dict[int, List[Tuple[str, str]]],
@@ -442,6 +458,8 @@ def _prune_graphs(
         Prunes graphs that assign first degree relationships to nodes
         that were not described in original pairwise relationships.
     """
+    if first_degrees is None:
+        return all_possible
     # Sort the first degrees.
     ret = []
     mapped = map(lambda x: sorted(x), first_degrees)
@@ -480,40 +498,117 @@ def _mark_and_extrapolate(graphs: List[List[Node]]) -> List[Node]:
         ret.append(_visit_nodes(graph))
     return ret
 
-def _relax_degree():
+def _relax_helper(
+            buffer: List[List[Tuple[str, str]]], 
+            idx: int, 
+            temp: List[Tuple[str, str]],
+            results: List[List[Tuple[str, str]]]
+        ) -> None:
+
+    """
+        Recursive helper for generating all possible pairwise combinations.
+    """
+
+    if idx == len(buffer):
+        results.append(deepcopy(temp))
+        return
+    
+    current = buffer[idx]
+    for rel in current:
+        temp.append(rel)
+        _relax_helper(buffer, idx + 1, temp, results)
+        temp.pop()
+
+def _relax_degree(
+        graph: List[Node],
+        pairwise_relations: Dict[int, List[Tuple[str, str]]]
+    ) -> List[List[Tuple[str, str]]]:
+    """
+        Decrements degrees by one, assigns a new relationship as well
+        based on possible configurations.
+    """
+    known = {}
+    for node in graph:
+        assert(node.id not in known.keys())
+        known.update({node.id: node})
+
+    pairwise_relations.pop(1, None)
+
+    possibilities = []
+    for degree in pairwise_relations.keys():
+        buffer = []
+        for rel in pairwise_relations.get(degree):
+            first, second = known.get(rel[0]), known.get(rel[1])
+            relaxed = _reduce_relation(first, second)
+            buffer.append(relaxed)
+        _relax_helper(buffer, 0, [], possibilities)
+        return possibilities
+    
+
     pass
 
 def construct_graph(
         node_list: List[Node],
-        pairwise_relations: Dict[int, List[Tuple[str, str]]]
-    ) -> List[List[Node]]:
+        pairwise_relations: Dict[int, List[Tuple[str, str]]],
+        results: List[List[Node]]
+    ) -> None:
     """
         Constructs a graph from the given information of known
         nodes and their pairwise relationships with each other.
         If no pairwise relation exists between two nodes, we assume
         that the two nodes are not related.
     """
+    if pairwise_relations.get(1) is None:
+        print('a')
+        if node_list is not None and len(node_list) != 0:
+            results.append(node_list)
+            # return results
+        return None
+
     # Construct mapping for known nodes.
     known = {}
     for node in node_list:
         assert(node.id not in known.keys())
         known.update({node.id: node})
 
-    # Extrapolate first
+    # Extrapolate first.
     for node in node_list:
         node.extrapolate()
         
-    # Begin assigning
-    while True:
-        results = []
-        _assign_helper(pairwise_relations.get(1), known, node_list, results, 0)
-        results = _prune_graphs(pairwise_relations.get(1), known, node_list, results)
-        results = _mark_and_extrapolate(results)
-        break
+    # Pipeline: assign => prune => mark => relax.
+    valid = []
+    _assign_helper(pairwise_relations.get(1), known, node_list, valid, 0)
+    if len(pairwise_relations.keys()) == 1:
+        print(valid)
+    if len(pairwise_relations.keys()) > 1:
+        valid = _prune_graphs(pairwise_relations.get(1), known, node_list, valid)
+        valid = _mark_and_extrapolate(valid)
 
-    # Add back the original graph.
-    results.append(_visit_nodes(node_list))
-    return results
+    i = 0
+    for graph in valid:
+        print(f'graph: {i}')
+        pairwise_copy = deepcopy(pairwise_relations)
+        pairs = _relax_degree(graph, pairwise_copy)
+        if pairs is None:
+            pairwise_map = deepcopy(pairwise_relations)
+            pairwise_map.pop(1, None)
+            construct_graph(graph, pairwise_map, results)
+            continue
+        for pair in pairs:
+            print(pair)
+            pairwise_map = deepcopy(pairwise_relations)
+
+            if len(pairwise_map.keys()) > 1:
+                pairwise_map.update({1 : pair})
+                pairwise_map.pop(2, None)
+                print(pairwise_map.keys())
+            else:
+                pairwise_map.pop(1, None)
+
+            construct_graph(graph, pairwise_map, results)
+        i += 1
+
+    return None
 
 def deepcopy_graph(node_list: List[Node]) -> List[Node]:
     """

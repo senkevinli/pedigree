@@ -7,9 +7,9 @@ from constructor.pedigree import construct_graph
 from constructor.util import parse_data, visualize_graph
 from os import path, remove
 
-DEGREES = 'first-degrees'
-INPUT_BIO = f'{DEGREES}/simple_bio.csv'
-INPUT_DEGREE = F'{DEGREES}/simple_degrees.csv'
+DEGREES = 'second-degrees'
+INPUT_BIO = f'{DEGREES}/grandparents_bio.csv'
+INPUT_DEGREE = F'{DEGREES}/grandparents_degrees.csv'
 
 def main():
 
@@ -20,14 +20,15 @@ def main():
     
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
-    complete_nodes = construct_graph(node_list, mappings)
+    results = []
+    construct_graph(node_list, mappings, results)
 
     # Clean up leftover .png files.
     files = glob.glob(path.join(dirname, f'./output/*.png'))
     for f in files:
         remove(f)
 
-    for i, node_list in enumerate(complete_nodes):
+    for i, node_list in enumerate(results):
         visualize_graph(node_list, f'graph{i}')
     
 
