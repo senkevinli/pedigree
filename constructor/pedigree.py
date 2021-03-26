@@ -3,6 +3,7 @@
 """ For traversing the pedigree and other related operations. """
 
 from __future__ import annotations
+import re
 from contextlib import contextmanager
 #`from constructor.util import visualize_graph
 from copy import deepcopy
@@ -119,16 +120,18 @@ class Node:
         ret = []
 
         # Parents.
-        ret.append(self.parents[0])
-        ret.append(self.parents[1])
+        if (self.parents != None and len(self.parents) == 2):
+            ret.append(self.parents[0])
+            ret.append(self.parents[1])
 
         # Children.
         ret += self.children
 
         # Siblings.
-        for child in self.parents[0].children:
-            if child.parents[1] == self.parents[1] and child != self:
-                ret.append(child)
+        if (self.parents != None and len(self.parents) == 2):
+            for child in self.parents[0].children:
+                if child.parents[1] == self.parents[1] and child != self:
+                    ret.append(child)
 
         return ret
 
@@ -136,6 +139,12 @@ def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
         Returns a complete list of nodes.
     """
+    temp = []
+    for node in node_list:
+        if node.occupied:
+            temp.append(node)
+    if (len(temp) != len(node_list)):
+        return _visit_nodes(temp)
     visited = set()
     copy_list = [node for node in node_list]
 
@@ -421,10 +430,12 @@ def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
     first_rel = first.get_first_degree_rel()
     for node in first_rel:
         assert(node.id is not second.id)
+        # if re.search('[0-9]+$', node.id):
         ret.append((second.id, node.id))
     second_rel = second.get_first_degree_rel()
     for node in second_rel:
         assert(node.id is not first.id)
+        # if re.search('[0-9]+$', node.id):
         ret.append((first.id, node.id))
     return ret
 
@@ -494,16 +505,16 @@ def _mark_and_extrapolate(graphs: List[List[Node]]) -> List[Node]:
         for node in graph:
             if not node.occupied:
                 node.occupied = True
-                node.extrapolate()
+                # node.extrapolate()
         ret.append(_visit_nodes(graph))
     return ret
 
 def _relax_helper(
-            buffer: List[List[Tuple[str, str]]], 
-            idx: int, 
-            temp: List[Tuple[str, str]],
-            results: List[List[Tuple[str, str]]]
-        ) -> None:
+    buffer: List[List[Tuple[str, str]]], 
+    idx: int, 
+    temp: List[Tuple[str, str]],
+    results: List[List[Tuple[str, str]]]
+) -> None:
 
     """
         Recursive helper for generating all possible pairwise combinations.
@@ -518,6 +529,25 @@ def _relax_helper(
         temp.append(rel)
         _relax_helper(buffer, idx + 1, temp, results)
         temp.pop()
+
+def _relax_helper2 (
+    buffer,
+    idx: int,
+    temp,
+    results
+) -> None:
+    """
+        Recursive helper for generating all pairwise relation
+        dictionaries. Results stored with dictionaries
+    """
+    if idx == len(buffer):
+        results.append(deepcopy(temp))
+        return
+    current = buffer[idx]
+    for possibility in current:
+        temp.update({idx + 1 : possibility})
+        _relax_helper2(buffer, idx + 1, temp, results)
+        temp.pop(idx + 1, None)
 
 def _relax_degree(
         graph: List[Node],
@@ -536,16 +566,19 @@ def _relax_degree(
 
     possibilities = []
     for degree in pairwise_relations.keys():
+        degree_possibilities = []
         buffer = []
         for rel in pairwise_relations.get(degree):
             first, second = known.get(rel[0]), known.get(rel[1])
             relaxed = _reduce_relation(first, second)
             buffer.append(relaxed)
-        _relax_helper(buffer, 0, [], possibilities)
-        return possibilities
-    
+        _relax_helper(buffer, 0, [], degree_possibilities)
+        possibilities.append(degree_possibilities)
 
-    pass
+    ret = []
+    _relax_helper2(possibilities, 0, {}, ret)
+    return ret
+
 
 def construct_graph(
         node_list: List[Node],
@@ -559,7 +592,6 @@ def construct_graph(
         that the two nodes are not related.
     """
     if pairwise_relations.get(1) is None:
-        print('a')
         if node_list is not None and len(node_list) != 0:
             results.append(node_list)
             # return results
@@ -572,41 +604,35 @@ def construct_graph(
         known.update({node.id: node})
 
     # Extrapolate first.
+    # if (len(pairwise_relations.keys()) > 1):
     for node in node_list:
         node.extrapolate()
         
     # Pipeline: assign => prune => mark => relax.
     valid = []
     _assign_helper(pairwise_relations.get(1), known, node_list, valid, 0)
-    if len(pairwise_relations.keys()) == 1:
-        print(valid)
-    if len(pairwise_relations.keys()) > 1:
+
+    # if len(pairwise_relations.keys()) == 1:
+    #     print(valid)
+    if len(pairwise_relations.keys()) == 3:
         valid = _prune_graphs(pairwise_relations.get(1), known, node_list, valid)
-        valid = _mark_and_extrapolate(valid)
+    valid = _mark_and_extrapolate(valid)
 
     i = 0
     for graph in valid:
         print(f'graph: {i}')
+        i += 1
         pairwise_copy = deepcopy(pairwise_relations)
-        pairs = _relax_degree(graph, pairwise_copy)
-        if pairs is None:
+        dicts = _relax_degree(graph, pairwise_copy)
+        if dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
             pairwise_map.pop(1, None)
             construct_graph(graph, pairwise_map, results)
             continue
-        for pair in pairs:
-            print(pair)
-            pairwise_map = deepcopy(pairwise_relations)
-
-            if len(pairwise_map.keys()) > 1:
-                pairwise_map.update({1 : pair})
-                pairwise_map.pop(2, None)
-                print(pairwise_map.keys())
-            else:
-                pairwise_map.pop(1, None)
-
+        for dict_pairs in dicts:
+            print(dict_pairs)
+            pairwise_map = deepcopy(dict_pairs)
             construct_graph(graph, pairwise_map, results)
-        i += 1
 
     return None
 

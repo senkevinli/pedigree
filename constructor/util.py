@@ -22,6 +22,19 @@ KNOWN_COLOR = 'yellow'
 LABEL_SIZE = 5
 NODE_SIZE = 100
 
+def post_process(graph: List[Node]) -> List[Node]:
+    """
+        Post process graph to remove extraneous nodes.
+    """
+    ret = []
+    for node in graph:
+        #  if re.search('[0-9]+$', node.id):
+        #      rels = node.get_first_degree_rel()
+        #      if len(rels) == 1:
+        #          rels[0].parents = ()
+        #          continue
+         ret.append(node)
+    return ret
 def parse_data(bios_csv: str, degrees_csv: str):
     """
         Args:
