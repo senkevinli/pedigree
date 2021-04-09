@@ -6,6 +6,7 @@ import glob
 from constructor.pedigree import construct_graph, _visit_nodes
 from constructor.util import parse_data, visualize_graph, post_process
 from os import path, remove
+from copy import deepcopy
 
 DEGREES = 'third-degrees'
 INPUT_BIO = f'{DEGREES}/simple_great_grand_bio.csv'
@@ -21,7 +22,7 @@ def main():
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
     results = []
-    construct_graph(node_list, mappings, results)
+    construct_graph(node_list, mappings, results, deepcopy(mappings), 1)
     real_results = []
     for result in results:
         real_results.append(post_process(_visit_nodes(result)))

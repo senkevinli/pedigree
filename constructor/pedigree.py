@@ -11,6 +11,7 @@ from typing import Tuple, List, Dict, Set, Optional
 
 AGE_DEFAULT = 100
 DEGREE_CAP = 4
+MAX = 4
 class Node:
     filler_id = 0
     def __init__(
@@ -20,6 +21,7 @@ class Node:
         mt_dna: Optional[str] = None,
         y_chrom: Optional[str] = None,
         occupied: Optional[bool] = False,
+        original: Optional[bool] = False,
         age: Optional[int] = AGE_DEFAULT,
         parents: Optional[Tuple[Node, Node]] = None,
         children: Optional[List[Node]] = None,
@@ -43,6 +45,7 @@ class Node:
         self.mt_dna = mt_dna
         self.age = age
         self.occupied = occupied
+        self.original = original
 
         # Tuple, first element is mother, second is father.
         if parents is not None:
@@ -69,6 +72,9 @@ class Node:
                f'mtDna: {self.mt_dna}\n' + \
                f'yChrom: {self.y_chrom}\n' + \
                f'age: {self.age}\n'
+
+    def is_given(self):
+        return self.original
 
     def extrapolate(self):
         """
@@ -134,6 +140,30 @@ class Node:
                     ret.append(child)
 
         return ret
+    
+    def search_entire_tree(self, other: Node, visited):
+        if self is other:
+            return True
+        for child in self.children:
+            if child in visited:
+                continue
+            visited.add(child)
+            val = child.search_entire_tree(other, visited)
+            if val:
+                return True
+
+        if self.parents != None and len(self.parents) == 2:
+            if self.parents[0] not in visited:
+                visited.add(self.parents[0])
+                val = self.parents[0].search_entire_tree(other, visited)
+                if val:
+                    return True
+            if self.parents[1] not in visited:
+                visited.add(self.parents[1])
+                val2 = self.parents[1].search_entire_tree(other, visited)
+                if val2:
+                    return True
+        return False
 
 def _visit_nodes(node_list: List[Node]) -> List[Node]:
     """
@@ -172,7 +202,7 @@ def _assign_helper(
         all_possible: List[List[Node]],
         idx: int
     ) -> None:
-    if idx == len(relation):
+    if relation is None or idx == len(relation):
         all_possible.append(deepcopy_graph(node_list))
         return
 
@@ -186,19 +216,23 @@ def _assign_helper(
     src = node_map.get(src)
     dest = node_map.get(dest)
 
-    share_mt_dna = src.mt_dna == dest.mt_dna or src.mt_dna is None or dest.mt_dna is None
+    share_mt_dna = src.mt_dna == dest.mt_dna
+    one_is_none = src.mt_dna is None or dest.mt_dna is None
 
     # ------ ASSIGNMENTS ------
 
     # Case that source and dest are both male.
     if not src.female and not dest.female:
+
         share_y = src.y_chrom == dest.y_chrom
-        if share_y and share_mt_dna:
+        one_chrom_none = src.y_chrom is None or dest.y_chrom is None
+
+        if (share_y or one_chrom_none) and (share_mt_dna or one_is_none):
             # Must be siblings.
             with _assign_sibling(src, dest) as ok:
                 if ok:
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-        elif share_y:
+        if (share_y or one_chrom_none) and one_is_none:
             # Either father/son or son/father.
 
             # Father/son first.
@@ -219,7 +253,7 @@ def _assign_helper(
 
             male_node = src if dest.female else dest
             female_node = src if src.female else dest
-            if share_mt_dna:
+            if share_mt_dna or one_is_none:
 
                 # Either siblings or son/mother.
 
@@ -233,7 +267,7 @@ def _assign_helper(
                     if ok:
                         _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
                 
-            else:
+            if not share_mt_dna:
                 # Don't share mtDNA. Must be father/daughter.
                 with _assign_parental(female_node, male_node) as ok:
                     if ok:
@@ -241,7 +275,7 @@ def _assign_helper(
 
     # Case that source and dest are both females.
     else:
-        if share_mt_dna:
+        if share_mt_dna or one_is_none:
             # May be siblings or daughter/mother or mother/daughter.
             
             # Case 1 siblings.
@@ -309,8 +343,19 @@ def _assign_parental (child: Node, parent: Node) -> None:
     for child in to_replace.children:
         child.parents = (parent, child.parents[1]) if parent.female else (child.parents[0], parent)
         parent.children.append(child)
+    
+    orig_mt = child.mt_dna
+    orig_ychrom = child.y_chrom
+
+    if child.mt_dna is None and parent.female:
+        child.mt_dna = parent.mt_dna
+    if not child.female and child.y_chrom is None and not parent.female:
+        child.y_chrom = parent.y_chrom
 
     yield True
+
+    child.mt_dna = orig_mt
+    child.y_chrom = orig_ychrom
 
     parent.children = orig_parent_children
     for child in to_replace.children:
@@ -356,7 +401,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
 
         father = all_parents[0] if all_parents[1].female else all_parents[1]
         mother = all_parents[0] if all_parents[0].female else all_parents[1]
-    
+
     elif len(all_parents) == 1:
         if all_parents[0].female:
             mother = all_parents[0]
@@ -380,7 +425,10 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
 
     to_d_father_children = [child for child in father_to_delete.children]
     to_d_mother_children = [child for child in mother_to_delete.children]
-
+    
+    # if sib1.search_entire_tree(sib2, set()):
+    #     yield False
+    #     return
     # Check for cycles first.
     if father_to_delete is not father:
         if father_to_delete.search_descendants([father, mother]):
@@ -398,6 +446,14 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
             if child.search_descendants([mother]):
                 yield False
                 return
+
+    sibs = [sib1, sib2]
+    for sib in sibs:
+        if not sib.female and sib.y_chrom is not None:
+            if sib.y_chrom != father.y_chrom:
+                yield False
+                return
+
     if father_to_delete is not father:
         for child in father_to_delete.children:
             father.children.append(child)
@@ -407,8 +463,29 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         for child in mother_to_delete.children:
             mother.children.append(child)
             child.parents = (mother, child.parents[1])
+ 
+    sib1_orig_mt = sib1.mt_dna
+    sib2_orig_mt = sib2.mt_dna
+
+    sib1_orig_ychrom = sib1.y_chrom
+    sib2_orig_ychrom = sib2.y_chrom
+
+    to_assign_mt = sib1_orig_mt if sib1_orig_mt is not None else sib2_orig_mt
+    sib1.mt_dna = to_assign_mt
+    sib2.mt_dna = to_assign_mt
+
+    if not sib1.female and not sib2.female:
+        to_assign_ychrom = sib1_orig_ychrom if sib1_orig_ychrom is not None else sib2_orig_ychrom
+        sib1.y_chrom = to_assign_ychrom
+        sib2.y_chrom = to_assign_ychrom
     
     yield True
+
+    sib1.mt_dna = sib1_orig_mt
+    sib2.mt_dna = sib2_orig_mt
+
+    sib1.y_chrom = sib1_orig_ychrom
+    sib2.y_chrom = sib2_orig_ychrom
 
     father.children = orig_father_children
     mother.children = orig_mother_children
@@ -429,35 +506,71 @@ def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
     ret = []
     first_rel = first.get_first_degree_rel()
     for node in first_rel:
+        if node.id is second.id:
+            continue
         assert(node.id is not second.id)
-        # if re.search('[0-9]+$', node.id):
         ret.append((second.id, node.id))
     second_rel = second.get_first_degree_rel()
     for node in second_rel:
+        if node.id is first.id:
+            continue
         assert(node.id is not first.id)
-        # if re.search('[0-9]+$', node.id):
         ret.append((first.id, node.id))
     return ret
 
-def _construct_helper(
-        relations: Dict[int, List[Tuple[str, str]]],
-        node_map: Dict[str, Node],
-        node_list: List[Node],
-        all_possible: List[List[Node]]
-    ) -> bool:
-    """
-        Recursive helper for assigning nodes.
-    """
-    if len(relations.keys() == 0):
-        all_possible.append(deepcopy_graph(node_list))
-        # Stop recursing.
-        return
-    
-    # First, assign all the ones that are degree 1.
-    to_assign = relations.get(1)
+# def _prune_graphs3(
+#     third_degrees: List[Tuple[str, str]],
+#     node
+# )
 
-    for i, relation in enumerate(to_assign):
-        pass
+
+def _prune_graphs2(
+    second_degrees: List[Tuple[str, str]],
+    node_map: Dict[str, Node],
+    occupied_nodes: List[Node],
+    all_possible: List[List[Node]]
+) -> List[List[Node]]:
+    """
+        Prunes graphs that assign first degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+    if second_degrees is None:
+        return all_possible
+
+    mapping = {}
+    for node in occupied_nodes:
+        lst = []
+        mapping.update({node.id : lst})
+    
+    for rel in second_degrees:
+        lst = mapping.get(rel[0])
+        lst.append(rel[1])
+        mapping.update({rel[0] : lst})
+
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
+
+    def _check_graph(graph: List[Node]) -> bool:
+        for node in graph:
+            if node.is_given():
+                first_relatives = set(node.get_first_degree_rel())
+                for rel in first_relatives:
+                    layer_first_relatives = set(rel.get_first_degree_rel())
+                    for second_rel in layer_first_relatives:
+                        if second_rel.is_given() and second_rel != node and second_rel not in first_relatives \
+                           and second_rel not in rel.parents:
+                            if second_rel.id not in mapping.get(node.id):
+                                return False
+        return True
+
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+
+    return ret
 
 def _prune_graphs(
     first_degrees: List[Tuple[str, str]],
@@ -472,14 +585,27 @@ def _prune_graphs(
     if first_degrees is None:
         return all_possible
     # Sort the first degrees.
-    ret = []
-    mapped = map(lambda x: sorted(x), first_degrees)
-
-    first_degree_map = {}
-    for rel in mapped:
-        lst = first_degree_map.get(rel[0], [])
+    mapping = {}
+    for node in occupied_nodes:
+        lst = []
+        mapping.update({node.id : lst})
+    
+    for rel in first_degrees:
+        lst = mapping.get(rel[0])
         lst.append(rel[1])
-        first_degree_map.update({rel[0] : lst})
+        mapping.update({rel[0] : lst})
+
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
+    # mapped = map(lambda x: sorted(x), first_degrees)
+
+    # first_degree_map = {}
+    # for rel in mapped:
+    #     lst = first_degree_map.get(rel[0], [])
+    #     lst.append(rel[1])
+    #     first_degree_map.update({rel[0] : lst})
 
     def _check_graph(graph: List[Node]) -> bool:
         for node in graph:
@@ -487,7 +613,7 @@ def _prune_graphs(
                 first_relatives = node.get_first_degree_rel()
                 for rel in first_relatives:
                     first, second = (rel.id, node.id) if rel.id < node.id else (node.id, rel.id)
-                    if rel.occupied and second not in first_degree_map.get(first):
+                    if rel.occupied and second not in mapping.get(first):
                         return False
         return True
 
@@ -498,14 +624,15 @@ def _prune_graphs(
 
     return ret
 
-def _mark_and_extrapolate(graphs: List[List[Node]]) -> List[Node]:
+def _mark_and_extrapolate(graphs: List[List[Node]], extrap: bool) -> List[Node]:
     """ Function for marking the unoccupied nodes and then extrapolating them. """
     ret = []
     for graph in graphs:
         for node in graph:
             if not node.occupied:
                 node.occupied = True
-                # node.extrapolate()
+                if extrap:
+                    node.extrapolate()
         ret.append(_visit_nodes(graph))
     return ret
 
@@ -583,7 +710,9 @@ def _relax_degree(
 def construct_graph(
         node_list: List[Node],
         pairwise_relations: Dict[int, List[Tuple[str, str]]],
-        results: List[List[Node]]
+        results: List[List[Node]],
+        original_pairwise,
+        degree: int
     ) -> None:
     """
         Constructs a graph from the given information of known
@@ -591,11 +720,10 @@ def construct_graph(
         If no pairwise relation exists between two nodes, we assume
         that the two nodes are not related.
     """
-    if pairwise_relations.get(1) is None:
+    if degree == MAX:
         if node_list is not None and len(node_list) != 0:
             results.append(node_list)
-            # return results
-        return None
+        return
 
     # Construct mapping for known nodes.
     known = {}
@@ -603,38 +731,39 @@ def construct_graph(
         assert(node.id not in known.keys())
         known.update({node.id: node})
 
-    # Extrapolate first.
-    # if (len(pairwise_relations.keys()) > 1):
-    for node in node_list:
-        node.extrapolate()
-        
+    # Edge case for extrapolation (first round)
+    if degree == 1:
+        for node in node_list:
+            node.extrapolate()
+
     # Pipeline: assign => prune => mark => relax.
     valid = []
     _assign_helper(pairwise_relations.get(1), known, node_list, valid, 0)
 
-    # if len(pairwise_relations.keys()) == 1:
-    #     print(valid)
-    if len(pairwise_relations.keys()) == 3:
-        valid = _prune_graphs(pairwise_relations.get(1), known, node_list, valid)
-    valid = _mark_and_extrapolate(valid)
+    if degree == 1:
+        valid = _prune_graphs(original_pairwise.get(1), known, node_list, valid)
+    elif degree == 2:
+        valid = _prune_graphs2(original_pairwise.get(2), known, node_list, valid)
+
+    # Don't extrapolate if we've hit the end.
+    valid = _mark_and_extrapolate(valid, degree + 1 != MAX)
 
     i = 0
     for graph in valid:
-        print(f'graph: {i}')
         i += 1
         pairwise_copy = deepcopy(pairwise_relations)
         dicts = _relax_degree(graph, pairwise_copy)
-        if dicts is None or len(dicts) == 0:
+        if degree == MAX - 1 or dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
             pairwise_map.pop(1, None)
-            construct_graph(graph, pairwise_map, results)
+            construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
             continue
         for dict_pairs in dicts:
             print(dict_pairs)
             pairwise_map = deepcopy(dict_pairs)
-            construct_graph(graph, pairwise_map, results)
+            construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
 
-    return None
+    return
 
 def deepcopy_graph(node_list: List[Node]) -> List[Node]:
     """

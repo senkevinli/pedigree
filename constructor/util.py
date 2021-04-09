@@ -55,7 +55,7 @@ def parse_data(bios_csv: str, degrees_csv: str):
         for row in reader:
             female = row[1] == 'F'
             node_list.append(Node(
-                row[0], female, row[2], row[3] if not female else None, occupied=True, age=row[4]
+                row[0], female, row[2], row[3] if not female else None, occupied=True, original=True, age=row[4]
             ))
     # Dictionary with key as degree and the value as a List of Tuples.
     pairwise_relations = {}
