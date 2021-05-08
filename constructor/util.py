@@ -20,6 +20,7 @@ from colormap import rgb2hex
 
 # Configurations.
 
+# Configurations for NetworkX
 OCCUPIED_COLOR = 'cyan'
 FREE_COLOR = 'green'
 KNOWN_COLOR = 'yellow'
@@ -28,7 +29,11 @@ LABEL_SIZE = 5
 NODE_SIZE = 100
 
 
-def gender_top_sort(graph: List[Node]):
+def _gender_top_sort(graph: List[Node]) -> List[Node]:
+    """
+        Takes in a graph as a list of nodes. Performs
+        gender topological sort on the family tree.
+    """
 
     # Preprocess
     mapping = {}
@@ -78,7 +83,7 @@ def gender_top_sort(graph: List[Node]):
 
 
 def is_isomorphic(graph1: List[Node], graph2: List[Node]):
-    return gender_top_sort(graph1) == gender_top_sort(graph2)
+    return _gender_top_sort(graph1) == _gender_top_sort(graph2)
 
 
 def compare_isomorph(graphs: List[List[Node]]) -> List[List[Node]]:
@@ -87,7 +92,7 @@ def compare_isomorph(graphs: List[List[Node]]) -> List[List[Node]]:
     """
     ret = []
 
-    tops = [gender_top_sort(graph) for graph in graphs]
+    tops = [_gender_top_sort(graph) for graph in graphs]
     ok = [True for top in tops]
     
 
@@ -139,12 +144,19 @@ def parse_data(bios_csv: str, degrees_csv: str):
 
     return node_list, pairwise_relations
 
-def _format_label(node):
+def _format_label(node) -> str:
+    """
+        Helper function to format labels.
+    """
     return f'ID: {node.id}\n' \
            f'MtDna: {node.mt_dna}\n' \
            f'YChrom: {node.y_chrom}'
 
-def visualize_graph_graphviz(nodes: List[Node], name):
+def visualize_graph_graphviz(nodes: List[Node], name) -> None:
+    """
+        Visualizes graph using Graphvis instead of NetworkX. Different
+        Nodes and their colors are represented in a key.
+    """
 
     # Colors for mitochondrial
     colors = distinctipy.get_colors(14, pastel_factor=1)
