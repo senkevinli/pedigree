@@ -1,0 +1,18 @@
+digraph unix {
+	node [shape=circle]
+	E [label=E]
+	9 [label=9]
+	B [label=B]
+	12 [label=12]
+	A [label=A]
+	G [label=G]
+	3 [label=3]
+	C [label=C]
+	14 [label=14]
+	11 [label=11]
+	D [label=D]
+	F [label=F]
+	13 [label=13]
+	10 [label=10]
+	2 [label=2]
+}

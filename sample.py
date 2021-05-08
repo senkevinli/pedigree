@@ -4,13 +4,13 @@
 import glob
 
 from constructor.pedigree import construct_graph, _visit_nodes
-from constructor.util import parse_data, visualize_graph, post_process
+from constructor.util import parse_data, visualize_graph, compare_isomorph, visualize_graph_graphviz
 from os import path, remove
 from copy import deepcopy
 
-DEGREES = 'third-degrees'
-INPUT_BIO = f'{DEGREES}/simple_great_grand_bio.csv'
-INPUT_DEGREE = F'{DEGREES}/simple_great_grand_degrees.csv'
+DEGREES = 'second-degrees'
+INPUT_BIO = f'{DEGREES}/grandparents_bio.csv'
+INPUT_DEGREE = F'{DEGREES}/grandparents_degrees.csv'
 
 def main():
 
@@ -23,19 +23,17 @@ def main():
     
     results = []
     construct_graph(node_list, mappings, results, deepcopy(mappings), 1)
-    real_results = []
-    for result in results:
-        real_results.append(post_process(_visit_nodes(result)))
 
     # Clean up leftover .png files.
-    files = glob.glob(path.join(dirname, f'./output/*.png'))
+    files = glob.glob(path.join(dirname, f'./output2/*'))
     for f in files:
         remove(f)
-
-    print(f'Generating: {len(real_results)} graphs')
-    for i, node_list in enumerate(real_results):
-        visualize_graph(node_list, f'graph{i}')
     
+    results = compare_isomorph(results)
+    print(f'Generating: {len(results)} graphs')
+    for i, node_list in enumerate(results):
+        # visualize_graph(node_list, path.join(dirname, f'./output2/graph{i}'))
+        visualize_graph_graphviz(node_list, path.join(dirname, f'./output2/graph{i}'))
 
 if __name__ == '__main__':
     main()

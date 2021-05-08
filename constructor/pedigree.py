@@ -11,7 +11,7 @@ from typing import Tuple, List, Dict, Set, Optional
 
 AGE_DEFAULT = 100
 DEGREE_CAP = 4
-MAX = 4
+MAX = 3
 class Node:
     filler_id = 0
     def __init__(
@@ -141,6 +141,23 @@ class Node:
 
         return ret
     
+    def get_second_degree_rel(self) -> List[Node]:
+        """
+            Returns all second degree relatives of the current node.
+        """
+
+        ret = []
+
+        first = set(self.get_first_degree_rel())
+        for node in first:
+            layer = set(node.get_first_degree_rel())
+            for second in layer:
+                if second != self and second not in first \
+                   and second not in node.parents:
+                   ret.append(second)
+        return ret
+            
+    
     def search_entire_tree(self, other: Node, visited):
         if self is other:
             return True
@@ -232,9 +249,8 @@ def _assign_helper(
             with _assign_sibling(src, dest) as ok:
                 if ok:
                     _assign_helper(relation, node_map, node_list, all_possible, idx + 1)
-        if (share_y or one_chrom_none) and one_is_none:
+        if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
             # Either father/son or son/father.
-
             # Father/son first.
             with _assign_parental(dest, src) as ok:
                 if ok:
@@ -479,6 +495,10 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         sib1.y_chrom = to_assign_ychrom
         sib2.y_chrom = to_assign_ychrom
     
+    father_orig_ychrom = father.y_chrom
+    if father.y_chrom is None:
+        to_assign = sib1.y_chrom if not sib1.female else sib2.y_chrom
+        father.y_chrom = to_assign
     yield True
 
     sib1.mt_dna = sib1_orig_mt
@@ -487,6 +507,7 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     sib1.y_chrom = sib1_orig_ychrom
     sib2.y_chrom = sib2_orig_ychrom
 
+    father.y_chrom = father_orig_ychrom
     father.children = orig_father_children
     mother.children = orig_mother_children
 
@@ -518,10 +539,108 @@ def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
         ret.append((first.id, node.id))
     return ret
 
-# def _prune_graphs3(
-#     third_degrees: List[Tuple[str, str]],
-#     node
-# )
+def _validate_graph3(
+    third_degrees: List[Tuple[str, str]],
+    node_map: Dict[str, Node],
+    occupied_nodes: List[Node],
+    all_possible: List[List[Node]]
+) -> List[List[Node]]:
+    """
+        Prunes graphs that assign third degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+
+    if third_degrees is None:
+        return all_possible
+
+    mapping = {}
+    for node in occupied_nodes:
+        lst = []
+        mapping.update({node.id : lst})
+    
+    for rel in third_degrees:
+        lst = mapping.get(rel[0])
+        lst.append(rel[1])
+        mapping.update({rel[0] : lst})
+
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
+
+    def _check_graph(graph: List[Node]) -> bool:
+        for node in graph:
+            if node.is_given():
+                first_relatives = set(node.get_first_degree_rel())
+                second_relatives = set(node.get_second_degree_rel())
+
+                for rel in second_relatives:
+                    layer_second_relatives = set(rel.get_first_degree_rel())
+                    for third_rel in layer_second_relatives:
+                        if third_rel.is_given() and third_rel != node and third_rel not in first_relatives \
+                           and third_rel not in second_relatives and third_rel not in rel.parents:
+                           if third_rel.id not in mapping.get(node.id):
+                               return False
+        return True
+
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+
+    return ret
+
+
+def _prune_graphs3(
+    third_degrees: List[Tuple[str, str]],
+    node_map: Dict[str, Node],
+    occupied_nodes: List[Node],
+    all_possible: List[List[Node]]
+) -> List[List[Node]]:
+    """
+        Prunes graphs that assign third degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+
+    if third_degrees is None:
+        return all_possible
+
+    mapping = {}
+    for node in occupied_nodes:
+        lst = []
+        mapping.update({node.id : lst})
+    
+    for rel in third_degrees:
+        lst = mapping.get(rel[0])
+        lst.append(rel[1])
+        mapping.update({rel[0] : lst})
+
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
+
+    def _check_graph(graph: List[Node]) -> bool:
+        for node in graph:
+            if node.is_given():
+                first_relatives = set(node.get_first_degree_rel())
+                second_relatives = set(node.get_second_degree_rel())
+
+                for rel in second_relatives:
+                    layer_second_relatives = set(rel.get_first_degree_rel())
+                    for third_rel in layer_second_relatives:
+                        if third_rel.is_given() and third_rel != node and third_rel not in first_relatives \
+                           and third_rel not in second_relatives and third_rel not in rel.parents:
+                           if third_rel.id not in mapping.get(node.id):
+                               return False
+        return True
+
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+
+    return ret
 
 
 def _prune_graphs2(
@@ -531,7 +650,7 @@ def _prune_graphs2(
     all_possible: List[List[Node]]
 ) -> List[List[Node]]:
     """
-        Prunes graphs that assign first degree relationships to nodes
+        Prunes graphs that assign third degree relationships to nodes
         that were not described in original pairwise relationships.
     """
     if second_degrees is None:
@@ -569,6 +688,12 @@ def _prune_graphs2(
     for graph in all_possible:
         if _check_graph(graph):
             ret.append(graph)
+    for graph in ret:
+        for node in graph:
+            if node.y_chrom is None:
+                for child in node.children:
+                    if not child.female:
+                        node.y_chrom = child.y_chrom
 
     return ret
 
@@ -622,6 +747,12 @@ def _prune_graphs(
         if _check_graph(graph):
             ret.append(graph)
 
+    for graph in ret:
+        for node in graph:
+            if node.y_chrom is None:
+                for child in node.children:
+                    if not child.female:
+                        node.y_chrom = child.y_chrom
     return ret
 
 def _mark_and_extrapolate(graphs: List[List[Node]], extrap: bool) -> List[Node]:
@@ -744,10 +875,11 @@ def construct_graph(
         valid = _prune_graphs(original_pairwise.get(1), known, node_list, valid)
     elif degree == 2:
         valid = _prune_graphs2(original_pairwise.get(2), known, node_list, valid)
+    elif degree == 3:
+        valid = _prune_graphs3(original_pairwise.get(3), known, node_list, valid)
 
     # Don't extrapolate if we've hit the end.
     valid = _mark_and_extrapolate(valid, degree + 1 != MAX)
-
     i = 0
     for graph in valid:
         i += 1
@@ -759,7 +891,6 @@ def construct_graph(
             construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
             continue
         for dict_pairs in dicts:
-            print(dict_pairs)
             pairwise_map = deepcopy(dict_pairs)
             construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
 
