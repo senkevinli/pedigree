@@ -11,7 +11,7 @@ import math
 
 from networkx.drawing.nx_pydot import graphviz_layout
 from distinctipy import distinctipy
-from graphviz import Graph, Digraph
+from graphviz import Graph, Digraph, Source
 from typing import List
 from .pedigree import Node
 from os import path, remove
@@ -169,7 +169,9 @@ def visualize_graph_graphviz(nodes: List[Node], name):
     u.attr('node', shape='circle')
     for i, node in enumerate(nodes):
         color1 = mt_map.get(node.mt_dna)
-        u.attr('node', color=f'{color1[0]} {color1[1]} {color1[2]}')
+        hex_code = rgb2hex(math.floor(color1[0]*255), math.floor(color1[1]*255), math.floor(color1[2]*255))
+
+        u.attr('node', color=f'{hex_code}')
         if not node.female:
             u.attr('node', shape='square', penwidth='1')
             color2 = y_map.get(node.y_chrom)
@@ -194,71 +196,33 @@ def visualize_graph_graphviz(nodes: List[Node], name):
         # Only draw connections for children.
         for child in node.children:
             u.edge(node.id, child.id)
+
+    with u.subgraph(name='cluster_0') as c:
+        c.attr(label=f'MtDNA Key')
+        c.attr('node', shape='plaintext', color='white')
+        mt_dna_table = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">'
+        for mt, color in mt_map.items():
+            print(color)
+            hex_code = rgb2hex(math.floor(color[0]*255), math.floor(color[1]*255), math.floor(color[2]*255))
+            mt_dna_table += f'<TR><TD> {mt if mt is not None else "Unknown"} </TD><TD BGCOLOR="{hex_code}"></TD></TR>'
+
+        mt_dna_table += '</TABLE>>'
+        print(mt_dna_table)
+        c.node('table', label=mt_dna_table)
+
+    with u.subgraph(name='cluster_1') as c:
+        c.attr(label=f'yChrom Key')
+        c.attr('node', shape='plaintext', color='white')
+        y_table = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">'
+        for y, color in y_map.items():
+            print(color)
+            hex_code = rgb2hex(math.floor(color[0]*255), math.floor(color[1]*255), math.floor(color[2]*255))
+            y_table += f'<TR><TD> {y if y is not None else "Unknown"} </TD><TD BGCOLOR="{hex_code}"></TD></TR>'
+
+        y_table += '</TABLE>>'
+        c.node('table2', label=y_table)
+    
     u.render(filename=name)
-    # plt.figure(3)
-    # G = nx.DiGraph()
-    
-    # # print(len(nodes))
-    # # nodes = [node for node in nodes if node.parents is not None and len(node.parents) != 0]
-    # # print(len(nodes))
-    # ids = [node.id for node in nodes]
-    # females = [node for node in nodes if node.female]
-    # males = [node for node in nodes if not node.female]
-    
-    # colormap_f = []
-    # for node in females:
-    #     if node.is_given():
-    #         colormap_f.append(KNOWN_COLOR)
-    #     elif node.occupied:
-    #         colormap_f.append(OCCUPIED_COLOR)
-    #     else:
-    #         colormap_f.append(FREE_COLOR)
-
-    # colormap_m = []
-    # for node in males:
-    #     if node.is_given():
-    #         colormap_m.append(KNOWN_COLOR)
-    #     elif node.occupied:
-    #         colormap_m.append(OCCUPIED_COLOR)
-    #     else:
-    #         colormap_m.append(FREE_COLOR)
-
-    # info = {node.id: _format_label(node) for node in nodes}
-
-    # G.add_nodes_from(ids)
-
-    # for node in nodes:
-    #     # Only draw connections for children.
-    #     for child in node.children:
-    #         G.add_edge(node.id, child.id)
-
-    # pos = graphviz_layout(G, prog='dot')
-    # nx.draw_networkx_nodes(
-    #     G,
-    #     pos,
-    #     nodelist=list(map(lambda node: node.id, males)), node_shape='s',
-    #     node_color=colormap_m,
-    #     node_size=NODE_SIZE
-    # )
-
-    # nx.draw_networkx_nodes(
-    #     G,
-    #     pos,
-    #     nodelist=list(map(lambda node: node.id, females)), node_shape='o',
-    #     node_color=colormap_f,
-    #     node_size=NODE_SIZE
-    # )
-
-    # nx.draw_networkx_edges(G, pos)
-    # nx.draw_networkx_labels(G, pos, labels=info, font_size=LABEL_SIZE)
-
-    # #nx.draw(G, pos, node_color=color_map, with_labels=True)
-    # plt.axis('off')
-    # figure = plt.gcf() # get current figure
-    # figure.set_size_inches(20, 20)
-    # cur = path.dirname(__file__)
-    # plt.savefig(path.join(cur, f'../output/{filename}'), dpi=300)
-    # plt.clf()
 
 
 def visualize_graph(nodes: List[Node], filename):
