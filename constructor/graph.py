@@ -84,6 +84,19 @@ class Graph:
             visit_edges(node.children)
         
         self.node_set = self.node_mapping.keys()
+    
+    def validate_nodes(self):
+        """
+            Validates nodes, only validates starting from one generation.
+        """
+        for node in self.node_list:
+            if not node.female and node.y_chrom is None:
+                for child in node.children:
+                    if not child.female:
+                        node.y_chrom = child.y_chrom
+            if node.mt_dna is None and len(node.parents != 0):
+                node.mt_dna = node.parents[0].mt_dna
+            
 
     def __deepcopy__(self, memo):
         
@@ -418,7 +431,254 @@ def _assign_helper(
             # No configuration works here.
             return
 
+# -------------
+# GRAPH PRUNERS
+#--------------
 
+
+# def _prune_graphs3(
+#     third_degrees: List[Tuple[str, str]],
+#     node_map: Dict[str, Node],
+#     occupied_nodes: List[Node],
+#     all_possible: List[List[Node]]
+# ) -> List[List[Node]]:
+#     """
+#         Prunes graphs that assign third degree relationships to nodes
+#         that were not described in original pairwise relationships.
+#     """
+
+#     if third_degrees is None:
+#         return all_possible
+
+#     mapping = {}
+#     for node in occupied_nodes:
+#         lst = []
+#         mapping.update({node.id : lst})
+    
+#     for rel in third_degrees:
+#         lst = mapping.get(rel[0])
+#         lst.append(rel[1])
+#         mapping.update({rel[0] : lst})
+
+#         lst1 = mapping.get(rel[1])
+#         lst1.append(rel[0])
+#         mapping.update({rel[1] : lst1})
+#     ret = []
+
+#     def _check_graph(graph: List[Node]) -> bool:
+#         for node in graph:
+#             if node.is_given():
+#                 first_relatives = set(node.get_first_degree_rel())
+#                 second_relatives = set(node.get_second_degree_rel())
+
+#                 for rel in second_relatives:
+#                     layer_second_relatives = set(rel.get_first_degree_rel())
+#                     for third_rel in layer_second_relatives:
+#                         if third_rel.is_given() and third_rel != node and third_rel not in first_relatives \
+#                            and third_rel not in second_relatives and third_rel not in rel.parents:
+#                            if third_rel.id not in mapping.get(node.id):
+#                                return False
+#         return True
+
+#     # Begin pruning graphs.
+#     for graph in all_possible:
+#         if _check_graph(graph):
+#             ret.append(graph)
+
+#     return ret
+
+
+# def _prune_graphs2(
+#     second_degrees: List[Tuple[str, str]],
+#     node_map: Dict[str, Node],
+#     occupied_nodes: List[Node],
+#     all_possible: List[List[Node]]
+# ) -> List[List[Node]]:
+#     """
+#         Prunes graphs that assign third degree relationships to nodes
+#         that were not described in original pairwise relationships.
+#     """
+#     if second_degrees is None:
+#         return all_possible
+
+#     mapping = {}
+#     for node in occupied_nodes:
+#         lst = []
+#         mapping.update({node.id : lst})
+    
+#     for rel in second_degrees:
+#         lst = mapping.get(rel[0])
+#         lst.append(rel[1])
+#         mapping.update({rel[0] : lst})
+
+#         lst1 = mapping.get(rel[1])
+#         lst1.append(rel[0])
+#         mapping.update({rel[1] : lst1})
+#     ret = []
+
+#     def _check_graph(graph: List[Node]) -> bool:
+#         for node in graph:
+#             if node.is_given():
+#                 first_relatives = set(node.get_first_degree_rel())
+#                 for rel in first_relatives:
+#                     layer_first_relatives = set(rel.get_first_degree_rel())
+#                     for second_rel in layer_first_relatives:
+#                         if second_rel.is_given() and second_rel != node and second_rel not in first_relatives \
+#                            and second_rel not in rel.parents:
+#                             if second_rel.id not in mapping.get(node.id):
+#                                 return False
+#         return True
+
+#     # Begin pruning graphs.
+#     for graph in all_possible:
+#         if _check_graph(graph):
+#             ret.append(graph)
+#     for graph in ret:
+#         for node in graph:
+#             if node.y_chrom is None:
+#                 for child in node.children:
+#                     if not child.female:
+#                         node.y_chrom = child.y_chrom
+
+#     return ret
+
+def _prune_graphs(
+    first_degrees: List[Tuple[str, str]],
+    graph: Graph,
+    all_possible: List[Graph]
+) -> List[Graph]:
+    """
+        Prunes graphs that assign first degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+    if first_degrees is None:
+        return all_possible
+
+    # Sort the first degrees.
+    mapping = {}
+    for node in graph.node_list:
+        lst = []
+        mapping.update({node.id : lst})
+    
+    for rel in first_degrees:
+        lst = mapping.get(rel[0])
+        lst.append(rel[1])
+        mapping.update({rel[0] : lst})
+
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
+
+    def _check_graph(graph: Graph) -> bool:
+        for node in graph:
+            if node.occupied:
+                first_relatives = node.get_first_degree_rel()
+                for rel in first_relatives:
+                    first, second = (rel.id, node.id) if rel.id < node.id else (node.id, rel.id)
+                    if rel.occupied and second not in mapping.get(first):
+                        return False
+        return True
+
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+
+    for graph in ret:
+        graph.validate_nodes()
+    return ret
+
+# ----------------
+# MARK/EXTRAPOLATE
+#-----------------
+def _mark_and_extrapolate(graphs: List[Graph], extrap: bool) -> List[Node]:
+    """ Function for marking the unoccupied nodes and then extrapolating them. """
+    ret = []
+    for graph in graphs:
+        for node in graph.node_list:
+            if not node.occupied:
+                node.occupied = True
+                if extrap:
+                    node.extrapolate()
+        ret.append(graph.update_nodes())
+    return ret
+
+# -----------------
+# DEGREE RELAXATION
+#------------------
+def _relax_helper(
+    buffer: List[List[Tuple[str, str]]], 
+    idx: int, 
+    temp: List[Tuple[str, str]],
+    results: List[List[Tuple[str, str]]]
+) -> None:
+
+    """
+        Recursive helper for generating all possible pairwise combinations.
+    """
+
+    if idx == len(buffer):
+        results.append(deepcopy(temp))
+        return
+    
+    current = buffer[idx]
+    for rel in current:
+        temp.append(rel)
+        _relax_helper(buffer, idx + 1, temp, results)
+        temp.pop()
+
+def _relax_helper2 (
+    buffer,
+    idx: int,
+    temp,
+    results
+) -> None:
+    """
+        Recursive helper for generating all pairwise relation
+        dictionaries. Results stored with dictionaries
+    """
+    if idx == len(buffer):
+        results.append(deepcopy(temp))
+        return
+    current = buffer[idx]
+    for possibility in current:
+        temp.update({idx + 1 : possibility})
+        _relax_helper2(buffer, idx + 1, temp, results)
+        temp.pop(idx + 1, None)
+
+def _relax_degree(
+        graph: List[Node],
+        pairwise_relations: Dict[int, List[Tuple[str, str]]]
+    ) -> List[List[Tuple[str, str]]]:
+    """
+        Decrements degrees by one, assigns a new relationship as well
+        based on possible configurations.
+    """
+    known = {}
+    for node in graph:
+        assert(node.id not in known.keys())
+        known.update({node.id: node})
+
+    pairwise_relations.pop(1, None)
+
+    possibilities = []
+    for degree in pairwise_relations.keys():
+        degree_possibilities = []
+        buffer = []
+        for rel in pairwise_relations.get(degree):
+            first, second = known.get(rel[0]), known.get(rel[1])
+            relaxed = _reduce_relation(first, second)
+            buffer.append(relaxed)
+        _relax_helper(buffer, 0, [], degree_possibilities)
+        possibilities.append(degree_possibilities)
+
+    ret = []
+    _relax_helper2(possibilities, 0, {}, ret)
+    return ret
+# ------------------
+# GRAPH CONSTRUCTION
+#-------------------
 def construct_all_graphs(
         current: Graph,
         pairwise_relations: Dict[int, List[Tuple[str, str]]],
@@ -449,14 +709,16 @@ def construct_all_graphs(
     _assign_helper(pairwise_relations.get(1), current, valid, 0)
 
     if degree == 1:
-        valid = _prune_graphs(original_pairwise.get(1), known, node_list, valid)
+        valid = _prune_graphs(original_pairwise.get(1), current, valid)
     elif degree == 2:
-        valid = _prune_graphs2(original_pairwise.get(2), known, node_list, valid)
+        pass
+        # valid = _prune_graphs2(original_pairwise.get(2), known, node_list, valid)
     elif degree == 3:
-        valid = _prune_graphs3(original_pairwise.get(3), known, node_list, valid)
+        pass
+        # valid = _prune_graphs3(original_pairwise.get(3), known, node_list, valid)
 
     # Don't extrapolate if we've hit the end.
-    valid = _mark_and_extrapolate(valid, degree + 1 != MAX)
+    valid = _mark_and_extrapolate(valid, degree + 1 != max)
     i = 0
     for graph in valid:
         i += 1
