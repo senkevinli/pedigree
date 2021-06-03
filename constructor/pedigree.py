@@ -135,6 +135,8 @@ class Node:
 
         # Siblings.
         if (self.parents != None and len(self.parents) == 2):
+            print(self.id)
+            print(self.parents)
             for child in self.parents[0].children:
                 if child.parents[1] == self.parents[1] and child != self:
                     ret.append(child)

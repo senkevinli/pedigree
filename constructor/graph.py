@@ -59,16 +59,16 @@ class Graph:
             all auxiliary data structures as well.
         """
         visited = set()
-        copy_list = [node for node in self.node_list if not node.occupied]
+        copy_list = [node for node in self.node_list if node.occupied]
         self.node_list = []
         self.node_mapping = {}
+
+        for node in copy_list:
+            self.node_mapping.update({node.id : node})
 
         def visit_edges(relations: List[Node], copy_list: List[Node]):
             for relative in relations:
                 if relative not in visited:
-                    visited.add(relative)
-                    self.node_list.add(relative)
-                    self.node_mapping.update({node.id : node})
                     copy_list.append(relative)
 
         # BFS search to get all the nodes in the visited set.
@@ -77,12 +77,12 @@ class Graph:
             if node in visited:
                 continue
             visited.add(node)
-            self.node_list.add(node)
+            self.node_list.append(node)
             self.node_mapping.update({node.id : node})
             # Sufficient to visit only parents and children.
-            visit_edges(node.parents)
-            visit_edges(node.children)
-        
+            visit_edges(node.parents, copy_list)
+            visit_edges(node.children, copy_list)
+
         self.node_set = self.node_mapping.keys()
     
     def validate_nodes(self):
@@ -94,7 +94,7 @@ class Graph:
                 for child in node.children:
                     if not child.female:
                         node.y_chrom = child.y_chrom
-            if node.mt_dna is None and len(node.parents != 0):
+            if node.mt_dna is None and len(node.parents) != 0:
                 node.mt_dna = node.parents[0].mt_dna
             
 
@@ -115,8 +115,8 @@ class Graph:
             assert(node.id not in node_mapping.keys())
             node_mapping.update({node.id : copied})
             node_list.append(copied)
-        
-        for node in node_mapping.values():
+
+        for node in node_list:
             node.children = [node_mapping.get(rel.id) for rel in node.children]
             if len(node.parents) > 0:
                 node.parents = (
@@ -571,7 +571,7 @@ def _prune_graphs(
     ret = []
 
     def _check_graph(graph: Graph) -> bool:
-        for node in graph:
+        for node in graph.node_list:
             if node.occupied:
                 first_relatives = node.get_first_degree_rel()
                 for rel in first_relatives:
@@ -601,7 +601,8 @@ def _mark_and_extrapolate(graphs: List[Graph], extrap: bool) -> List[Node]:
                 node.occupied = True
                 if extrap:
                     node.extrapolate()
-        ret.append(graph.update_nodes())
+        graph.update_nodes()
+        ret.append(graph)
     return ret
 
 # -----------------
@@ -609,7 +610,7 @@ def _mark_and_extrapolate(graphs: List[Graph], extrap: bool) -> List[Node]:
 #------------------
 def _relax_helper(
     buffer: List[List[Tuple[str, str]]], 
-    idx: int, 
+    idx: int,
     temp: List[Tuple[str, str]],
     results: List[List[Tuple[str, str]]]
 ) -> None:
@@ -647,6 +648,26 @@ def _relax_helper2 (
         _relax_helper2(buffer, idx + 1, temp, results)
         temp.pop(idx + 1, None)
 
+def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
+    """
+        Reduces relationship of first and second node by one degree. Returns
+        all possible pairwise arrangements.
+    """
+    ret = []
+    first_rel = first.get_first_degree_rel()
+    for node in first_rel:
+        if node.id is second.id:
+            continue
+        assert(node.id is not second.id)
+        ret.append((second.id, node.id))
+    second_rel = second.get_first_degree_rel()
+    for node in second_rel:
+        if node.id is first.id:
+            continue
+        assert(node.id is not first.id)
+        ret.append((first.id, node.id))
+    return ret
+
 def _relax_degree(
         graph: List[Node],
         pairwise_relations: Dict[int, List[Tuple[str, str]]]
@@ -656,7 +677,7 @@ def _relax_degree(
         based on possible configurations.
     """
     known = {}
-    for node in graph:
+    for node in graph.node_list:
         assert(node.id not in known.keys())
         known.update({node.id: node})
 
@@ -676,6 +697,7 @@ def _relax_degree(
     ret = []
     _relax_helper2(possibilities, 0, {}, ret)
     return ret
+
 # ------------------
 # GRAPH CONSTRUCTION
 #-------------------
@@ -703,6 +725,7 @@ def construct_all_graphs(
     # Edge case for extrapolation (first round)
     if degree == 1:
         current.extrapolate_all()
+    
 
     # Pipeline: assign => prune => mark => relax.
     valid = []
@@ -724,13 +747,13 @@ def construct_all_graphs(
         i += 1
         pairwise_copy = deepcopy(pairwise_relations)
         dicts = _relax_degree(graph, pairwise_copy)
-        if degree == MAX - 1 or dicts is None or len(dicts) == 0:
+        if degree == max - 1 or dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
             pairwise_map.pop(1, None)
-            construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
+            construct_all_graphs(graph, pairwise_map, results, original_pairwise, degree + 1, max)
             continue
         for dict_pairs in dicts:
             pairwise_map = deepcopy(dict_pairs)
-            construct_graph(graph, pairwise_map, results, original_pairwise, degree + 1)
+            construct_all_graphs(graph, pairwise_map, results, original_pairwise, degree + 1, max)
 
     return

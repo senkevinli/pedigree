@@ -3,14 +3,15 @@
 """ Runs pedigree construction on sample data. """
 import glob
 
-from constructor.pedigree import construct_graph, _visit_nodes
+from constructor.graph import construct_all_graphs
+# from constructor.pedigree import construct_graph, _visit_nodes
 from constructor.util import parse_data, visualize_graph, compare_isomorph, visualize_graph_graphviz
 from os import path, remove
 from copy import deepcopy
 
-DEGREES = 'second-degrees'
-INPUT_BIO = f'{DEGREES}/grandparents_bio.csv'
-INPUT_DEGREE = F'{DEGREES}/grandparents_degrees.csv'
+DEGREES = 'first-degrees'
+INPUT_BIO = f'{DEGREES}/disjoint_bio.csv'
+INPUT_DEGREE = F'{DEGREES}/disjoint_degrees.csv'
 
 def main():
 
@@ -22,7 +23,7 @@ def main():
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
     results = []
-    construct_graph(node_list, mappings, results, deepcopy(mappings), 1)
+    construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, 2)
 
     # Clean up leftover .png files.
     files = glob.glob(path.join(dirname, f'./output2/*'))

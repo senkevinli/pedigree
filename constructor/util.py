@@ -17,6 +17,7 @@ from .pedigree import Node
 from os import path, remove
 from copy import deepcopy
 from colormap import rgb2hex
+from .graph import Graph
 
 # Configurations.
 
@@ -29,13 +30,14 @@ LABEL_SIZE = 5
 NODE_SIZE = 100
 
 
-def _gender_top_sort(graph: List[Node]) -> List[Node]:
+def _gender_top_sort(graph: Graph) -> List[Node]:
     """
         Takes in a graph as a list of nodes. Performs
         gender topological sort on the family tree.
     """
 
     # Preprocess
+    graph = graph.node_list
     mapping = {}
     for node in graph:
         mapping.update({node.id : node})
@@ -130,6 +132,7 @@ def parse_data(bios_csv: str, degrees_csv: str):
             node_list.append(Node(
                 row[0], female, row[2], row[3] if not female else None, occupied=True, original=True, age=row[4]
             ))
+    ret = Graph(node_list)
     # Dictionary with key as degree and the value as a List of Tuples.
     pairwise_relations = {}
     with open(degrees_csv, 'r') as degrees_file:
@@ -142,7 +145,7 @@ def parse_data(bios_csv: str, degrees_csv: str):
             cur.append((row[0], row[1]))
             pairwise_relations.update({int(row[2]) : cur})
 
-    return node_list, pairwise_relations
+    return ret, pairwise_relations
 
 def _format_label(node) -> str:
     """
@@ -152,13 +155,14 @@ def _format_label(node) -> str:
            f'MtDna: {node.mt_dna}\n' \
            f'YChrom: {node.y_chrom}'
 
-def visualize_graph_graphviz(nodes: List[Node], name) -> None:
+def visualize_graph_graphviz(nodes: Graph, name) -> None:
     """
         Visualizes graph using Graphvis instead of NetworkX. Different
         Nodes and their colors are represented in a key.
     """
 
     # Colors for mitochondrial
+    nodes = nodes.node_list
     colors = distinctipy.get_colors(14, pastel_factor=1)
     mt_map = {}
     i = 0
