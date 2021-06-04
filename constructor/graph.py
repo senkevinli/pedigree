@@ -79,6 +79,7 @@ class Graph:
             visited.add(node)
             self.node_list.append(node)
             self.node_mapping.update({node.id : node})
+
             # Sufficient to visit only parents and children.
             visit_edges(node.parents, copy_list)
             visit_edges(node.children, copy_list)
@@ -333,11 +334,13 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
     for child in to_d_mother_children:
         child.parents = (mother_to_delete, child.parents[1])
 
+
 def _assign_helper(
         relation: List[Tuple[str, str]],
         graph: Graph,
         all_possible: List[Graph],
-        idx: int
+        idx: int,
+        degree: int
     ) -> None:
     """
         Assigns according to all possible relationships specified by the
@@ -355,6 +358,12 @@ def _assign_helper(
     share_mt_dna = src.mt_dna == dest.mt_dna
     one_is_none = src.mt_dna is None or dest.mt_dna is None
 
+    if degree == 2:
+        second_rel = src.get_first_degree_rel()
+        if dest in second_rel:
+             _assign_helper(relation, graph, all_possible, idx + 1, degree)
+             return
+
     # ------ ASSIGNMENTS ------
 
     # Case that source and dest are both male.
@@ -367,17 +376,17 @@ def _assign_helper(
             # Must be siblings.
             with _assign_sibling(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
         if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
             # Either father/son or son/father.
             # Father/son first.
             with _assign_parental(dest, src) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
             # Son/father.
             with _assign_parental(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
         else:
             # No configuration works here.
             return
@@ -395,18 +404,18 @@ def _assign_helper(
                 # Case 1 siblings.
                 with _assign_sibling(male_node, female_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
 
                 # Case 2 parental.
                 with _assign_parental(male_node, female_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
                 
             if not share_mt_dna:
                 # Don't share mtDNA. Must be father/daughter.
                 with _assign_parental(female_node, male_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
 
     # Case that source and dest are both females.
     else:
@@ -416,17 +425,17 @@ def _assign_helper(
             # Case 1 siblings.
             with _assign_sibling(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
             
             # Case 2 daughter/mother.
             with _assign_parental(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
 
             # Case 3 mother/daugther.
             with _assign_parental(dest, src) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
         else:
             # No configuration works here.
             return
@@ -488,59 +497,58 @@ def _assign_helper(
 #     return ret
 
 
-# def _prune_graphs2(
-#     second_degrees: List[Tuple[str, str]],
-#     node_map: Dict[str, Node],
-#     occupied_nodes: List[Node],
-#     all_possible: List[List[Node]]
-# ) -> List[List[Node]]:
-#     """
-#         Prunes graphs that assign third degree relationships to nodes
-#         that were not described in original pairwise relationships.
-#     """
-#     if second_degrees is None:
-#         return all_possible
+def _prune_graphs2(
+    second_degrees: List[Tuple[str, str]],
+    graph: Graph,
+    all_possible: List[Graph]
+) -> List[List[Node]]:
+    """
+        Prunes graphs that assign third degree relationships to nodes
+        that were not described in original pairwise relationships.
+    """
+    if second_degrees is None:
+        return all_possible
 
-#     mapping = {}
-#     for node in occupied_nodes:
-#         lst = []
-#         mapping.update({node.id : lst})
+    mapping = {}
+    for node in graph.node_list:
+        lst = []
+        mapping.update({node.id : lst})
     
-#     for rel in second_degrees:
-#         lst = mapping.get(rel[0])
-#         lst.append(rel[1])
-#         mapping.update({rel[0] : lst})
+    for rel in second_degrees:
+        lst = mapping.get(rel[0])
+        lst.append(rel[1])
+        mapping.update({rel[0] : lst})
 
-#         lst1 = mapping.get(rel[1])
-#         lst1.append(rel[0])
-#         mapping.update({rel[1] : lst1})
-#     ret = []
+        lst1 = mapping.get(rel[1])
+        lst1.append(rel[0])
+        mapping.update({rel[1] : lst1})
+    ret = []
 
-#     def _check_graph(graph: List[Node]) -> bool:
-#         for node in graph:
-#             if node.is_given():
-#                 first_relatives = set(node.get_first_degree_rel())
-#                 for rel in first_relatives:
-#                     layer_first_relatives = set(rel.get_first_degree_rel())
-#                     for second_rel in layer_first_relatives:
-#                         if second_rel.is_given() and second_rel != node and second_rel not in first_relatives \
-#                            and second_rel not in rel.parents:
-#                             if second_rel.id not in mapping.get(node.id):
-#                                 return False
-#         return True
+    def _check_graph(graph: Graph) -> bool:
+        for node in graph.node_list:
+            if node.is_given():
+                first_relatives = set(node.get_first_degree_rel())
+                for rel in first_relatives:
+                    layer_first_relatives = set(rel.get_first_degree_rel())
+                    for second_rel in layer_first_relatives:
+                        if second_rel.is_given() and second_rel != node and second_rel not in first_relatives \
+                           and second_rel not in rel.parents:
+                            if second_rel.id not in mapping.get(node.id):
+                                return False
+        return True
 
-#     # Begin pruning graphs.
-#     for graph in all_possible:
-#         if _check_graph(graph):
-#             ret.append(graph)
-#     for graph in ret:
-#         for node in graph:
-#             if node.y_chrom is None:
-#                 for child in node.children:
-#                     if not child.female:
-#                         node.y_chrom = child.y_chrom
+    # Begin pruning graphs.
+    for graph in all_possible:
+        if _check_graph(graph):
+            ret.append(graph)
+    for graph in ret:
+        for node in graph.node_list:
+            if node.y_chrom is None:
+                for child in node.children:
+                    if not child.female:
+                        node.y_chrom = child.y_chrom
 
-#     return ret
+    return ret
 
 def _prune_graphs(
     first_degrees: List[Tuple[str, str]],
@@ -715,7 +723,7 @@ def construct_all_graphs(
         If no pairwise relation exists between two nodes, we assume
         that the two nodes are not related.
     """
-    assert (degree >= 1 and max <= 3)
+    assert (degree >= 1 and max <= 4)
 
     if degree == max:
         if current is not None and current.size() != 0:
@@ -729,21 +737,21 @@ def construct_all_graphs(
 
     # Pipeline: assign => prune => mark => relax.
     valid = []
-    _assign_helper(pairwise_relations.get(1), current, valid, 0)
+    _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
 
     if degree == 1:
         valid = _prune_graphs(original_pairwise.get(1), current, valid)
     elif degree == 2:
-        pass
-        # valid = _prune_graphs2(original_pairwise.get(2), known, node_list, valid)
+        valid = _prune_graphs2(original_pairwise.get(2), current, valid)
     elif degree == 3:
+        # valid = _prune_graphs3(original_pairwise.get(3), current, valid)
         pass
-        # valid = _prune_graphs3(original_pairwise.get(3), known, node_list, valid)
 
     # Don't extrapolate if we've hit the end.
     valid = _mark_and_extrapolate(valid, degree + 1 != max)
     i = 0
     for graph in valid:
+        print(f'graph: {i}', degree)
         i += 1
         pairwise_copy = deepcopy(pairwise_relations)
         dicts = _relax_degree(graph, pairwise_copy)

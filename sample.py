@@ -8,9 +8,12 @@ from constructor.util import parse_data, compare_isomorph, visualize_graph_graph
 from os import path, remove
 from copy import deepcopy
 
-DEGREES = 'first-degrees'
-INPUT_BIO = f'{DEGREES}/disjoint_bio.csv'
-INPUT_DEGREE = f'{DEGREES}/disjoint_degrees.csv'
+DEGREES = 'real'
+FILE = 'hazelton'
+MAX = 3
+
+INPUT_BIO = f'{DEGREES}/{FILE}_bio.csv'
+INPUT_DEGREE = f'{DEGREES}/{FILE}_degrees.csv'
 OUTPUT_DIR = './output2' 
 
 def main():
@@ -23,7 +26,7 @@ def main():
     node_list, mappings = parse_data(bios_csv, degrees_csv)
     
     results = []
-    construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, 2)
+    construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX)
 
     # Clean up leftover .png files.
     files = glob.glob(path.join(dirname, f'{OUTPUT_DIR}/*'))
