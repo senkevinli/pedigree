@@ -335,6 +335,13 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
         child.parents = (mother_to_delete, child.parents[1])
 
 
+def reverse_ordering(rel_assignment):
+    """
+        Reverses ordering for assignments.
+    """
+    return lambda *args : rel_assignment(*args[::-1])
+
+
 def _assign_helper(
         relation: List[Tuple[str, str]],
         graph: Graph,
@@ -358,7 +365,7 @@ def _assign_helper(
     share_mt_dna = src.mt_dna == dest.mt_dna
     one_is_none = src.mt_dna is None or dest.mt_dna is None
 
-    if degree == 2:
+    if degree >= 2:
         second_rel = src.get_first_degree_rel()
         if dest in second_rel:
              _assign_helper(relation, graph, all_possible, idx + 1, degree)
@@ -661,19 +668,26 @@ def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
         Reduces relationship of first and second node by one degree. Returns
         all possible pairwise arrangements.
     """
+
     ret = []
-    first_rel = first.get_first_degree_rel()
-    for node in first_rel:
+    first_rel = set(first.get_first_degree_rel())
+    second_rel = set(second.get_first_degree_rel())
+
+    for node in first_rel.difference(second_rel):
         if node.id is second.id:
             continue
         assert(node.id is not second.id)
         ret.append((second.id, node.id))
-    second_rel = second.get_first_degree_rel()
-    for node in second_rel:
+    
+    for node in second_rel.difference(first_rel):
         if node.id is first.id:
             continue
         assert(node.id is not first.id)
         ret.append((first.id, node.id))
+    
+    for node in first_rel.intersection(second_rel):
+        ret.append((first.id, node.id))
+
     return ret
 
 def _relax_degree(
@@ -709,6 +723,90 @@ def _relax_degree(
 # ------------------
 # GRAPH CONSTRUCTION
 #-------------------
+
+def prob_construct_helper(
+        current: Graph,
+        id_pairs: List[Tuple[str, str]],
+        probs: List[List[int]],
+        relationship_arr: List[function],
+        current_prob: float,
+        prob_results: List[float],
+        graph_results: List[Graph],
+        idx: int
+    ):
+
+    if idx == len(id_pairs):
+        prob_results.append(current_prob)
+        graph_results.append(deepcopy(current))
+        return
+    
+    id1, id2 = id_pairs[idx]
+    relation_probs = probs[idx]
+
+    for assigner, prob in zip(relationship_arr, relation_probs):
+        if prob == 0:
+            continue
+        first_node = current.get_node(id1)
+        second_node = current.get_node(id2)
+
+        with assigner(first_node, second_node) as ok:
+            # print(first_node.id)
+            # print(first_node.parents[0].id, first_node.parents[1].id)
+            # print(second_node.id)
+            # print(second_node.parents[0].id, second_node.parents[1].id)
+            # print()
+
+            if ok:
+                # print(first_node.id, second_node.id)
+                prob_construct_helper(current, id_pairs, probs, relationship_arr,
+                                      current_prob + prob, prob_results, graph_results, idx + 1)
+            if not ok:
+                print(first_node.id, second_node.id)
+                print(first_node)
+                print(second_node)
+                print(assigner)
+
+
+
+def construct_all_known(
+        current: Graph,
+        first_probs: Dict[Tuple[str, str], List[int]],
+        results: List[Graph],
+        graph_probabilities: List[float],
+        original_pairwise
+    ) -> None:
+    """
+        Constructs all graphs from the given first degree relationships.
+    """
+    reverse_parental = reverse_ordering(_assign_parental)
+    relationship_arr = [
+        reverse_parental, # father-daughter
+        _assign_parental, # daughter-father
+        reverse_parental, # father-son
+        _assign_parental, # son-father
+        _assign_parental, # son-mother
+        reverse_parental, # mother-son
+        _assign_parental, # daughter-mother
+        reverse_parental, # mother-daughter
+        _assign_sibling   # siblings
+    ]
+
+    result_graphs = results
+    result_probs = graph_probabilities
+
+    id_pairs = []
+    probs = []
+
+    for key, val in first_probs.items():
+        id_pairs.append(key)
+        probs.append(val)
+    
+    current.extrapolate_all()
+    prob_construct_helper(current, id_pairs, probs, relationship_arr, 0, result_probs,
+                          result_graphs, 0)
+    
+    return result_graphs, result_probs
+
 def construct_all_graphs(
         current: Graph,
         pairwise_relations: Dict[int, List[Tuple[str, str]]],

@@ -136,6 +136,21 @@ def parse_data(bios_csv: str, degrees_csv: str):
 
     return ret, pairwise_relations
 
+def parse_prob(prob_csv: str, graph: Graph):
+    if prob_csv is None:
+        return None
+    with open(prob_csv, 'r') as prob_file:
+        reader = csv.reader(prob_file)
+
+        ret = {}
+        next(reader)
+        for row in reader:
+            key = (row[0], row[1])
+            val = [float(prob_val) for prob_val in row[2:]]
+            ret.update({key: val})
+    return ret
+
+
 def visualize_graph_graphviz(nodes: Graph, name) -> None:
     """
         Visualizes graph using Graphvis instead of NetworkX. Different

@@ -3,17 +3,23 @@
 """ Runs pedigree construction on sample data. """
 import glob
 
-from constructor.graph import construct_all_graphs
-from constructor.util import parse_data, compare_isomorph, visualize_graph_graphviz
+from constructor.graph import construct_all_graphs, construct_all_known
+from constructor.util import parse_data, compare_isomorph, visualize_graph_graphviz, parse_prob
 from os import path, remove
 from copy import deepcopy
 
 DEGREES = 'real'
 FILE = 'hazelton'
-MAX = 3
+MAX = 2
+PROB = True
 
 INPUT_BIO = f'{DEGREES}/{FILE}_bio.csv'
 INPUT_DEGREE = f'{DEGREES}/{FILE}_degrees.csv'
+
+INPUT_PROB = None
+if PROB:
+    INPUT_PROB = f'{DEGREES}/{FILE}_prob.csv'
+
 OUTPUT_DIR = './output2' 
 
 def main():
@@ -22,11 +28,22 @@ def main():
     dirname = path.dirname(__file__)
     bios_csv = path.join(dirname, f'./samples/{INPUT_BIO}')
     degrees_csv = path.join(dirname, f'./samples/{INPUT_DEGREE}')
+    prob_csv = None
+
+    if PROB:
+        prob_csv = path.join(dirname, f'./samples/{INPUT_PROB}')
     
     node_list, mappings = parse_data(bios_csv, degrees_csv)
+    probabilities = parse_prob(prob_csv, node_list)
     
     results = []
-    construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX)
+    probabilities_results = []
+
+    if PROB:
+        construct_all_known(node_list, probabilities, results, probabilities_results, deepcopy(mappings))
+        print(probabilities_results)
+    else:
+        construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX)
 
     # Clean up leftover .png files.
     files = glob.glob(path.join(dirname, f'{OUTPUT_DIR}/*'))
