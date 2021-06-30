@@ -37,13 +37,8 @@ def main():
     probabilities = parse_prob(prob_csv, node_list)
     
     results = []
-    probabilities_results = []
 
-    if PROB:
-        construct_all_known(node_list, probabilities, results, probabilities_results, deepcopy(mappings))
-        print(probabilities_results)
-    else:
-        construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX)
+    construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX, probabilities)
 
     # Clean up leftover .png files.
     files = glob.glob(path.join(dirname, f'{OUTPUT_DIR}/*'))

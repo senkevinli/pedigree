@@ -447,6 +447,101 @@ def _assign_helper(
             # No configuration works here.
             return
 
+
+def _check_ok(
+        relation: Tuple[str, str],
+        graph: Graph
+    ) -> bool:
+    """
+        Assigns according to all possible relationships specified by the
+        `relation` list. All possible graphs are put into the `all_possible` list.
+    """
+
+    src, dest = relation
+
+    src = graph.get_node(src)
+    dest = graph.get_node(dest)
+
+    share_mt_dna = src.mt_dna == dest.mt_dna
+    one_is_none = src.mt_dna is None or dest.mt_dna is None
+
+    # ------ CHECKS ------
+
+    # Case that source and dest are both male.
+    if not src.female and not dest.female:
+
+        share_y = src.y_chrom == dest.y_chrom
+        one_chrom_none = src.y_chrom is None or dest.y_chrom is None
+
+        if (share_y or one_chrom_none) and (share_mt_dna or one_is_none):
+            # Must be siblings.
+            with _assign_sibling(src, dest) as ok:
+                if ok:
+                   return True
+        if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
+            # Either father/son or son/father.
+            # Father/son first.
+            with _assign_parental(dest, src) as ok:
+                if ok:
+                    return True
+            # Son/father.
+            with _assign_parental(src, dest) as ok:
+                if ok:
+                    return True
+        else:
+            # No configuration works here.
+            return False
+
+    # Case that one is female and the other is male.
+    elif (not src.female and dest.female) or \
+         (src.female and not dest.female):
+
+            male_node = src if dest.female else dest
+            female_node = src if src.female else dest
+            if share_mt_dna or one_is_none:
+
+                # Either siblings or son/mother.
+
+                # Case 1 siblings.
+                with _assign_sibling(male_node, female_node) as ok:
+                    if ok:
+                        return True
+
+                # Case 2 parental.
+                with _assign_parental(male_node, female_node) as ok:
+                    if ok:
+                       return True
+                
+            if not share_mt_dna:
+                # Don't share mtDNA. Must be father/daughter.
+                with _assign_parental(female_node, male_node) as ok:
+                    if ok:
+                        return True
+            return False
+
+    # Case that source and dest are both females.
+    else:
+        if share_mt_dna or one_is_none:
+            # May be siblings or daughter/mother or mother/daughter.
+            
+            # Case 1 siblings.
+            with _assign_sibling(src, dest) as ok:
+                if ok:
+                    return True
+            
+            # Case 2 daughter/mother.
+            with _assign_parental(src, dest) as ok:
+                if ok:
+                   return True
+
+            # Case 3 mother/daugther.
+            with _assign_parental(dest, src) as ok:
+                if ok:
+                    return True
+        else:
+            # No configuration works here.
+            return False
+
 # -------------
 # GRAPH PRUNERS
 #--------------
@@ -635,6 +730,7 @@ def _relax_helper(
     """
 
     if idx == len(buffer):
+        print(len(results))
         results.append(deepcopy(temp))
         return
     
@@ -663,7 +759,7 @@ def _relax_helper2 (
         _relax_helper2(buffer, idx + 1, temp, results)
         temp.pop(idx + 1, None)
 
-def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
+def _reduce_relation (first: Node, second: Node, graph: Graph) -> List[Tuple[str, str]]:
     """
         Reduces relationship of first and second node by one degree. Returns
         all possible pairwise arrangements.
@@ -674,24 +770,31 @@ def _reduce_relation (first: Node, second: Node) -> List[Tuple[str, str]]:
     second_rel = set(second.get_first_degree_rel())
 
     for node in first_rel.difference(second_rel):
-        if node.id is second.id:
+        if node.id is second.id or (node.original and second.original):
+            continue
+        if not _check_ok((node.id, second.id), graph):
             continue
         assert(node.id is not second.id)
         ret.append((second.id, node.id))
     
     for node in second_rel.difference(first_rel):
-        if node.id is first.id:
+        if node.id is first.id or ((node.original and first.original)):
+            continue
+        if not _check_ok((node.id, second.id), graph):
             continue
         assert(node.id is not first.id)
         ret.append((first.id, node.id))
     
     for node in first_rel.intersection(second_rel):
+        if node.original and first.original:
+            continue
+        if not _check_ok((node.id, second.id), graph):
+            continue
         ret.append((first.id, node.id))
-
     return ret
 
 def _relax_degree(
-        graph: List[Node],
+        graph: Graph,
         pairwise_relations: Dict[int, List[Tuple[str, str]]]
     ) -> List[List[Tuple[str, str]]]:
     """
@@ -711,13 +814,21 @@ def _relax_degree(
         buffer = []
         for rel in pairwise_relations.get(degree):
             first, second = known.get(rel[0]), known.get(rel[1])
-            relaxed = _reduce_relation(first, second)
+            relaxed = _reduce_relation(first, second, graph)
             buffer.append(relaxed)
+        from pprint import pprint
+        iterations = 1
+        for elem in buffer:
+            iterations *= len(elem)
+            pprint(elem)
+            print(len(elem))
+        print(iterations)
         _relax_helper(buffer, 0, [], degree_possibilities)
         possibilities.append(degree_possibilities)
 
     ret = []
     _relax_helper2(possibilities, 0, {}, ret)
+    print(ret)
     return ret
 
 # ------------------
@@ -750,21 +861,9 @@ def prob_construct_helper(
         second_node = current.get_node(id2)
 
         with assigner(first_node, second_node) as ok:
-            # print(first_node.id)
-            # print(first_node.parents[0].id, first_node.parents[1].id)
-            # print(second_node.id)
-            # print(second_node.parents[0].id, second_node.parents[1].id)
-            # print()
-
             if ok:
-                # print(first_node.id, second_node.id)
                 prob_construct_helper(current, id_pairs, probs, relationship_arr,
-                                      current_prob + prob, prob_results, graph_results, idx + 1)
-            if not ok:
-                print(first_node.id, second_node.id)
-                print(first_node)
-                print(second_node)
-                print(assigner)
+                                      current_prob * prob, prob_results, graph_results, idx + 1)
 
 
 
@@ -773,7 +872,6 @@ def construct_all_known(
         first_probs: Dict[Tuple[str, str], List[int]],
         results: List[Graph],
         graph_probabilities: List[float],
-        original_pairwise
     ) -> None:
     """
         Constructs all graphs from the given first degree relationships.
@@ -802,7 +900,7 @@ def construct_all_known(
         probs.append(val)
     
     current.extrapolate_all()
-    prob_construct_helper(current, id_pairs, probs, relationship_arr, 0, result_probs,
+    prob_construct_helper(current, id_pairs, probs, relationship_arr, 1, result_probs,
                           result_graphs, 0)
     
     return result_graphs, result_probs
@@ -813,7 +911,8 @@ def construct_all_graphs(
         results: List[Graph],
         original_pairwise,
         degree: int,
-        max: int
+        max: int,
+        first_probs = None
     ) -> None:
     """
         Constructs all graph from the given information of known
@@ -835,7 +934,12 @@ def construct_all_graphs(
 
     # Pipeline: assign => prune => mark => relax.
     valid = []
-    _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
+    if not first_probs:
+        _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
+    else:
+        probs = []
+        construct_all_known(current, first_probs, valid, probs)
+        print(f'Probabilities for degree: {degree} are: {probs}')
 
     if degree == 1:
         valid = _prune_graphs(original_pairwise.get(1), current, valid)
@@ -849,10 +953,12 @@ def construct_all_graphs(
     valid = _mark_and_extrapolate(valid, degree + 1 != max)
     i = 0
     for graph in valid:
-        print(f'graph: {i}', degree)
         i += 1
+        print(i)
         pairwise_copy = deepcopy(pairwise_relations)
-        dicts = _relax_degree(graph, pairwise_copy)
+
+        if degree != max - 1:
+            dicts = _relax_degree(graph, pairwise_copy)
         if degree == max - 1 or dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
             pairwise_map.pop(1, None)
