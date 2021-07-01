@@ -73,7 +73,8 @@ def _gender_top_sort(graph: Graph) -> List[Node]:
     
     real = []
     for res in result:
-        real.append(mapping.get(res).female)
+        node = mapping.get(res)
+        real.append(node.female if not node.original else node.id)
     return real
 
 

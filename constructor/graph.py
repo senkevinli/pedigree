@@ -132,7 +132,7 @@ class Graph:
         return copy
 
 @contextmanager
-def _assign_parental (child: Node, parent: Node) -> None:
+def _assign_parental (child: Node, parent: Node, half_ok: Optional[bool] = False) -> None:
     """
         Helper function for assigning parental relationships between
         `child` and `parent`. Returns the Node tuple of the original
@@ -158,11 +158,15 @@ def _assign_parental (child: Node, parent: Node) -> None:
         yield False
         return
 
+    # if (orig_mother.original and parent.female) or \
+    #    (orig_father.original and not parent.female):
+    #    yield False
+    #    return
+
     if (orig_mother.occupied and parent.female) or \
        (orig_father.occupied and not parent.female):
        yield False
        return
-
     # Begin assignment.
     to_replace = orig_father if not parent.female else orig_mother
     orig_parent_children = [node for node in parent.children]
@@ -446,6 +450,119 @@ def _assign_helper(
         else:
             # No configuration works here.
             return
+
+
+def _assign_helper_evolved(
+        relation: List[List[Tuple[str, str]]],
+        graph: Graph,
+        all_possible: List[Graph],
+        idx: int,
+        degree: int
+    ) -> None:
+    """
+        Assigns according to all possible relationships specified by the
+        `relation` list. All possible graphs are put into the `all_possible` list.
+    """
+    if relation is None or idx == len(relation):
+        print('got one!')
+        print(len(all_possible))
+        if len(all_possible) < 20:
+            all_possible.append(deepcopy(graph))
+        return
+
+    choices = relation[idx]
+
+    for current in choices:
+        if len(all_possible) > 20:
+            continue
+        src, dest = current
+        src = graph.get_node(src)
+        dest = graph.get_node(dest)
+
+        share_mt_dna = src.mt_dna == dest.mt_dna
+        one_is_none = src.mt_dna is None or dest.mt_dna is None
+
+        if degree >= 2:
+            second_rel = src.get_first_degree_rel()
+            if dest in second_rel:
+                _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                continue
+
+        # ------ ASSIGNMENTS ------
+
+        # Case that source and dest are both male.
+        if not src.female and not dest.female:
+
+            share_y = src.y_chrom == dest.y_chrom
+            one_chrom_none = src.y_chrom is None or dest.y_chrom is None
+
+            if (share_y or one_chrom_none) and (share_mt_dna or one_is_none):
+                # Must be siblings.
+                with _assign_sibling(src, dest) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+            if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
+                # Either father/son or son/father.
+                # Father/son first.
+                with _assign_parental(dest, src) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                # Son/father.
+                with _assign_parental(src, dest) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+            else:
+                # No configuration works here.
+                continue
+
+        # Case that one is female and the other is male.
+        elif (not src.female and dest.female) or \
+            (src.female and not dest.female):
+
+                male_node = src if dest.female else dest
+                female_node = src if src.female else dest
+                if share_mt_dna or one_is_none:
+
+                    # Either siblings or son/mother.
+
+                    # Case 1 siblings.
+                    with _assign_sibling(male_node, female_node) as ok:
+                        if ok:
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+
+                    # Case 2 parental.
+                    with _assign_parental(male_node, female_node) as ok:
+                        if ok:
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    
+                if not share_mt_dna:
+                    # Don't share mtDNA. Must be father/daughter.
+                    with _assign_parental(female_node, male_node) as ok:
+                        if ok:
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+
+        # Case that source and dest are both females.
+        else:
+            if share_mt_dna or one_is_none:
+                # May be siblings or daughter/mother or mother/daughter.
+                
+                # Case 1 siblings.
+                with _assign_sibling(src, dest) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                
+                # Case 2 daughter/mother.
+                with _assign_parental(src, dest) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+
+                # Case 3 mother/daugther.
+                with _assign_parental(dest, src) as ok:
+                    if ok:
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+            else:
+                # No configuration works here.
+                continue
 
 
 def _check_ok(
@@ -823,12 +940,13 @@ def _relax_degree(
             pprint(elem)
             print(len(elem))
         print(iterations)
-        _relax_helper(buffer, 0, [], degree_possibilities)
-        possibilities.append(degree_possibilities)
+        possibilities = buffer
+        # _relax_helper(buffer, 0, [], degree_possibilities)
+        # possibilities.append(degree_possibilities)
 
-    ret = []
-    _relax_helper2(possibilities, 0, {}, ret)
-    print(ret)
+    # ret = []
+    # _relax_helper2(possibilities, 0, {}, ret)
+    ret = possibilities
     return ret
 
 # ------------------
@@ -935,7 +1053,11 @@ def construct_all_graphs(
     # Pipeline: assign => prune => mark => relax.
     valid = []
     if not first_probs:
-        _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
+        if degree == 1:
+            _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
+        else:
+            print('hit')
+            _assign_helper_evolved(pairwise_relations, current, valid, 0, degree)
     else:
         probs = []
         construct_all_known(current, first_probs, valid, probs)
@@ -944,6 +1066,7 @@ def construct_all_graphs(
     if degree == 1:
         valid = _prune_graphs(original_pairwise.get(1), current, valid)
     elif degree == 2:
+        pass
         valid = _prune_graphs2(original_pairwise.get(2), current, valid)
     elif degree == 3:
         # valid = _prune_graphs3(original_pairwise.get(3), current, valid)
@@ -959,13 +1082,17 @@ def construct_all_graphs(
 
         if degree != max - 1:
             dicts = _relax_degree(graph, pairwise_copy)
+            print(dicts)
         if degree == max - 1 or dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
-            pairwise_map.pop(1, None)
+            # pairwise_map.pop(1, None)
+            pairwise_map = {}
             construct_all_graphs(graph, pairwise_map, results, original_pairwise, degree + 1, max)
             continue
-        for dict_pairs in dicts:
-            pairwise_map = deepcopy(dict_pairs)
-            construct_all_graphs(graph, pairwise_map, results, original_pairwise, degree + 1, max)
+        # for dict_pairs in dicts:
+        #     pairwise_map = deepcopy(dict_pairs)
+        #     construct_all_graphs(graph, pairwise_map, results, original_pairwise, degree + 1, max)
+        construct_all_graphs(graph, dicts, results, original_pairwise, degree + 1, max)
+
 
     return

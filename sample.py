@@ -10,7 +10,7 @@ from copy import deepcopy
 
 DEGREES = 'real'
 FILE = 'hazelton'
-MAX = 2
+MAX = 3
 PROB = True
 
 INPUT_BIO = f'{DEGREES}/{FILE}_bio.csv'
