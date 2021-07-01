@@ -3,14 +3,24 @@
 """ Runs pedigree construction on sample data. """
 import glob
 
-from constructor.pedigree import construct_graph, _visit_nodes
-from constructor.util import parse_data, visualize_graph, compare_isomorph, visualize_graph_graphviz
+from constructor.graph import construct_all_graphs, construct_all_known
+from constructor.util import parse_data, compare_isomorph, visualize_graph_graphviz, parse_prob
 from os import path, remove
 from copy import deepcopy
 
-DEGREES = 'second-degrees'
-INPUT_BIO = f'{DEGREES}/grandparents_bio.csv'
-INPUT_DEGREE = F'{DEGREES}/grandparents_degrees.csv'
+DEGREES = 'real'
+FILE = 'hazelton'
+MAX = 2
+PROB = True
+
+INPUT_BIO = f'{DEGREES}/{FILE}_bio.csv'
+INPUT_DEGREE = f'{DEGREES}/{FILE}_degrees.csv'
+
+INPUT_PROB = None
+if PROB:
+    INPUT_PROB = f'{DEGREES}/{FILE}_prob.csv'
+
+OUTPUT_DIR = './output2' 
 
 def main():
 
@@ -18,22 +28,32 @@ def main():
     dirname = path.dirname(__file__)
     bios_csv = path.join(dirname, f'./samples/{INPUT_BIO}')
     degrees_csv = path.join(dirname, f'./samples/{INPUT_DEGREE}')
+    prob_csv = None
+
+    if PROB:
+        prob_csv = path.join(dirname, f'./samples/{INPUT_PROB}')
     
     node_list, mappings = parse_data(bios_csv, degrees_csv)
+    probabilities = parse_prob(prob_csv, node_list)
     
     results = []
-    construct_graph(node_list, mappings, results, deepcopy(mappings), 1)
+    probabilities_results = []
+
+    if PROB:
+        construct_all_known(node_list, probabilities, results, probabilities_results, deepcopy(mappings))
+        print(probabilities_results)
+    else:
+        construct_all_graphs(node_list, mappings, results, deepcopy(mappings), 1, MAX)
 
     # Clean up leftover .png files.
-    files = glob.glob(path.join(dirname, f'./output2/*'))
+    files = glob.glob(path.join(dirname, f'{OUTPUT_DIR}/*'))
     for f in files:
         remove(f)
     
     results = compare_isomorph(results)
     print(f'Generating: {len(results)} graphs')
     for i, node_list in enumerate(results):
-        # visualize_graph(node_list, path.join(dirname, f'./output2/graph{i}'))
-        visualize_graph_graphviz(node_list, path.join(dirname, f'./output2/graph{i}'))
+        visualize_graph_graphviz(node_list, path.join(dirname, f'{OUTPUT_DIR}/graph{i}'))
 
 if __name__ == '__main__':
     main()
