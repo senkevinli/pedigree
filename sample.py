@@ -20,7 +20,7 @@ INPUT_PROB = None
 if PROB:
     INPUT_PROB = f'{DEGREES}/{FILE}_prob.csv'
 
-OUTPUT_DIR = './output2' 
+OUTPUT_DIR = './output3' 
 
 def main():
 

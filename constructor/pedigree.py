@@ -11,7 +11,7 @@ from typing import Tuple, List, Dict, Set, Optional
 
 AGE_DEFAULT = 100
 DEGREE_CAP = 4
-MAX = 3
+MAX = 2
 class Node:
     filler_id = 0
     def __init__(
@@ -103,6 +103,69 @@ class Node:
             )
             self.parents = (mother, father)
         assert len(self.parents) == 2
+    
+    def get_all_descendants(self) -> Set[str]:
+        total = set()
+        for child in self.children:
+            total.add(child.id)
+            desc = child.get_all_descendants()
+            total = total.union(desc)
+        return total
+    
+
+    def search_ancestors(self, nodes: List[Node]) -> bool:
+        if self.parents is None or len(self.parents) == 0:
+            return False
+        for parent in self.parents:
+            if parent in nodes:
+                return True
+            if parent.search_ancestors(nodes):
+                return True
+        return False
+    
+    def modified_search_ancestors(self, nodes: List[Node]) -> bool:
+        if self.parents is None or len(self.parents) == 0:
+            return False
+        
+        search_candidates = self.parents
+
+        visited = set([self])
+        queue = [search_candidates[0], search_candidates[1]]
+        while queue:
+            next = queue.pop()
+            for n in next.children:
+                if n.id not in visited:
+                    queue.append(n)
+                    visited.add(n.id)
+                    if n in nodes:
+                        return True
+            for n in next.parents:
+                if n.id not in visited:
+                    queue.append(n)
+                    visited.add(n.id)
+                    if n in nodes:
+                        return True
+        return False
+    
+    def get_nodes_in_cluster(self) -> List[Node]:
+        visited = set()
+        ret = []
+        queue = [self]
+        while queue:
+            next = queue.pop()
+            for n in next.children:
+                if n.id not in visited:
+                    ret.append(n)
+                    queue.append(n)
+                    visited.add(n.id)
+            for n in next.parents:
+                if n.id not in visited:
+                    ret.append(n)
+                    queue.append(n)
+                    visited.add(n.id)
+        return ret
+
+
 
     def search_descendants(self, nodes: List[Node]) -> bool:
         """
@@ -148,13 +211,40 @@ class Node:
 
         ret = []
 
+        partners = []
+        for child in self.children:
+            if self.female:
+                partners.append(child.parents[1])
+            else:
+                partners.append(child.parents[0])
+
         first = set(self.get_first_degree_rel())
         for node in first:
             layer = set(node.get_first_degree_rel())
             for second in layer:
-                if second != self and second not in first \
-                   and second not in node.parents:
+                if second != self and second not in first and second not in partners:
                    ret.append(second)
+        return ret
+
+
+    def get_third_degree_rel(self) -> List[Node]:
+
+        ret = []
+        first = set(self.get_first_degree_rel())
+        second = set(self.get_second_degree_rel())
+        # print("third degree for: ", self.id)
+        # print("so currently second degree is: ", [node.id for node in second])
+        # print("so currently first degree is: ", [node.id for node in first])
+        for node in second:
+            layer = set(node.get_first_degree_rel())
+            # print("for second layer", node.id, [thing.id for thing in layer])
+            for third in layer:
+                is_third_rel = third != self and third not in first \
+                    and third not in second
+                if is_third_rel:
+                    ret.append(third)
+        
+        # print("TOTAL", [node.id for node in ret])
         return ret
             
     
@@ -311,6 +401,130 @@ def _assign_helper(
         else:
             # No configuration works here.
             return
+
+class Graph:
+    def __init__(self, given_nodes: List[Node]) -> None:
+        """
+            Constructs a graph that is a deep copy of the given node list.
+            3 data structures => node list, node dictionary, node set.
+        """
+
+        self.node_list = deepcopy(given_nodes)
+
+        # Construct mapping.
+        self.node_mapping = {}
+        for node in self.node_list:
+            if node.id not in self.node_mapping.keys():
+                self.node_mapping.update({node.id : node})
+        
+        self.node_set = set(self.node_mapping.keys())
+    
+    def __str__(self) -> str:
+        """
+            Returns string representation (all the node ids).
+        """
+        ret = ''
+        for node in self.node_list:
+            ret += node.id
+        return ret
+
+    def get_node (self, id : int) -> Node:
+        """
+            Returns the specified node by id, if not present, then 
+            returns None.
+        """
+        return self.node_mapping.get(id)
+    
+    def size(self)->int:
+        """
+            Returns the length of nodes.
+        """
+        return len(self.node_list)
+    
+    def extrapolate_all(self) -> None:
+        """
+            Extrapolates all nodes.
+        """
+        for node in self.node_list:
+            node.extrapolate()
+
+    def update_nodes(self) -> None:
+        """
+            Updates all the nodes via breadth first search. Updates
+            all auxiliary data structures as well.
+        """
+        visited = set()
+        copy_list = [node for node in self.node_list if node.occupied]
+        self.node_list = []
+        self.node_mapping = {}
+
+        for node in copy_list:
+            self.node_mapping.update({node.id : node})
+
+        def visit_edges(relations: List[Node], copy_list: List[Node]):
+            for relative in relations:
+                if relative not in visited:
+                    copy_list.append(relative)
+
+        # BFS search to get all the nodes in the visited set.
+        while len(copy_list) > 0:
+            node = copy_list.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            self.node_list.append(node)
+            self.node_mapping.update({node.id : node})
+
+            # Sufficient to visit only parents and children.
+            visit_edges(node.parents, copy_list)
+            visit_edges(node.children, copy_list)
+
+        self.node_set = self.node_mapping.keys()
+    
+    def validate_nodes(self):
+        """
+            Validates nodes, only validates starting from one generation.
+        """
+        for node in self.node_list:
+            if not node.female and node.y_chrom is None:
+                for child in node.children:
+                    if not child.female:
+                        node.y_chrom = child.y_chrom
+            if node.mt_dna is None and len(node.parents) != 0:
+                node.mt_dna = node.parents[0].mt_dna
+            
+
+    def __deepcopy__(self, memo):
+        
+        # Update before deepcopying.
+        self.update_nodes()
+
+        copy = type(self)([])
+        memo[id(self)] = copy
+        
+        node_list = []
+        node_mapping = {}
+
+        # First create mapping with correctly copied nodes.
+        for node in self.node_list:
+            copied = deepcopy(node)
+            assert(node.id not in node_mapping.keys())
+            node_mapping.update({node.id : copied})
+            node_list.append(copied)
+
+        for node in node_list:
+            node.children = [node_mapping.get(rel.id) for rel in node.children]
+            if len(node.parents) > 0:
+                node.parents = (
+                    node_mapping.get(node.parents[0].id),
+                    node_mapping.get(node.parents[1].id)
+                )
+    
+        copy.node_list = node_list
+        copy.node_mapping = node_mapping
+        copy.node_set = set(copy.node_mapping.keys())
+
+        return copy
 
 # ------ ASSIGNMENT SUBHELPER METHODS ------
 

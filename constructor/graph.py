@@ -1,136 +1,21 @@
 #!/usr/bin/env python3
 
 from __future__ import annotations
-from .pedigree import Node
+from .pedigree import Node, Graph
+from .util import visualize_graph_graphviz
+from os import sys
+from os import path
 from typing import List
 from copy import deepcopy
 from typing import Tuple, List, Dict, Set, Optional
 from contextlib import contextmanager
 
-class Graph:
-    def __init__(self, given_nodes: List[Node]) -> None:
-        """
-            Constructs a graph that is a deep copy of the given node list.
-            3 data structures => node list, node dictionary, node set.
-        """
+global_graph = 0
+dirname = path.dirname(__file__)
 
-        self.node_list = deepcopy(given_nodes)
-
-        # Construct mapping.
-        self.node_mapping = {}
-        for node in self.node_list:
-            if node.id not in self.node_mapping.keys():
-                self.node_mapping.update({node.id : node})
-        
-        self.node_set = set(self.node_mapping.keys())
-    
-    def __str__(self) -> str:
-        """
-            Returns string representation (all the node ids).
-        """
-        ret = ''
-        for node in self.node_list:
-            ret += node.id
-        return ret
-
-    def get_node (self, id : int) -> Node:
-        """
-            Returns the specified node by id, if not present, then 
-            returns None.
-        """
-        return self.node_mapping.get(id)
-    
-    def size(self)->int:
-        """
-            Returns the length of nodes.
-        """
-        return len(self.node_list)
-    
-    def extrapolate_all(self) -> None:
-        """
-            Extrapolates all nodes.
-        """
-        for node in self.node_list:
-            node.extrapolate()
-
-    def update_nodes(self) -> None:
-        """
-            Updates all the nodes via breadth first search. Updates
-            all auxiliary data structures as well.
-        """
-        visited = set()
-        copy_list = [node for node in self.node_list if node.occupied]
-        self.node_list = []
-        self.node_mapping = {}
-
-        for node in copy_list:
-            self.node_mapping.update({node.id : node})
-
-        def visit_edges(relations: List[Node], copy_list: List[Node]):
-            for relative in relations:
-                if relative not in visited:
-                    copy_list.append(relative)
-
-        # BFS search to get all the nodes in the visited set.
-        while len(copy_list) > 0:
-            node = copy_list.pop()
-            if node in visited:
-                continue
-            visited.add(node)
-            self.node_list.append(node)
-            self.node_mapping.update({node.id : node})
-
-            # Sufficient to visit only parents and children.
-            visit_edges(node.parents, copy_list)
-            visit_edges(node.children, copy_list)
-
-        self.node_set = self.node_mapping.keys()
-    
-    def validate_nodes(self):
-        """
-            Validates nodes, only validates starting from one generation.
-        """
-        for node in self.node_list:
-            if not node.female and node.y_chrom is None:
-                for child in node.children:
-                    if not child.female:
-                        node.y_chrom = child.y_chrom
-            if node.mt_dna is None and len(node.parents) != 0:
-                node.mt_dna = node.parents[0].mt_dna
-            
-
-    def __deepcopy__(self, memo):
-        
-        # Update before deepcopying.
-        self.update_nodes()
-
-        copy = type(self)([])
-        memo[id(self)] = copy
-        
-        node_list = []
-        node_mapping = {}
-
-        # First create mapping with correctly copied nodes.
-        for node in self.node_list:
-            copied = deepcopy(node)
-            assert(node.id not in node_mapping.keys())
-            node_mapping.update({node.id : copied})
-            node_list.append(copied)
-
-        for node in node_list:
-            node.children = [node_mapping.get(rel.id) for rel in node.children]
-            if len(node.parents) > 0:
-                node.parents = (
-                    node_mapping.get(node.parents[0].id),
-                    node_mapping.get(node.parents[1].id)
-                )
-    
-        copy.node_list = node_list
-        copy.node_mapping = node_mapping
-        copy.node_set = set(copy.node_mapping.keys())
-
-        return copy
-
+# 1. prioritize rows where both samples are from the same cluster
+# 2. prioritize for which only one sample is in the largest cluster (sort on largest cluster length in pair)
+# 3. sort on # of times particular sample appears in 2nd or 3rd degree.
 @contextmanager
 def _assign_parental (child: Node, parent: Node, half_ok: Optional[bool] = False) -> None:
     """
@@ -171,11 +56,16 @@ def _assign_parental (child: Node, parent: Node, half_ok: Optional[bool] = False
     to_replace = orig_father if not parent.female else orig_mother
     orig_parent_children = [node for node in parent.children]
 
+    if parent in child.get_nodes_in_cluster():
+        yield False
+        return
+
     # Cycle detection first.
     for child in to_replace.children:
         if child.search_descendants([parent]):
             yield False
             return
+    
 
     for child in to_replace.children:
         child.parents = (parent, child.parents[1]) if parent.female else (child.parents[0], parent)
@@ -288,6 +178,14 @@ def _assign_sibling (sib1: Node, sib2: Node) -> None:
             if sib.y_chrom != father.y_chrom:
                 yield False
                 return
+    
+    if father_to_delete is not father and father.modified_search_ancestors(father_to_delete.children):
+        yield False
+        return
+
+    if mother_to_delete is not mother and mother.modified_search_ancestors(mother_to_delete.children):
+        yield False
+        return
 
     if father_to_delete is not father:
         for child in father_to_delete.children:
@@ -345,19 +243,101 @@ def reverse_ordering(rel_assignment):
     """
     return lambda *args : rel_assignment(*args[::-1])
 
+# def _assign_avuncular(src: Node, avunc: Node) -> None:
+#     if src is None or len(src.parents) == 0:
+#         return False
+    
+#     mom = src.parents[0]
+#     dad = src.parents[1]
+
+#     one_is_none = mom.mtDna is None or avunc.mtDna is None
+#     if one_is_none or mom.mtDna == avunc.mtDna:
+#         with _assign_sibling(mom, avunc) as result:
+#             yield result
+
+#     one_is_none = dad.mtDna is None or avunc.mtDna is None
+#     if avunc.female:
+#         if one_is_none or dad.mtDna == avunc.mtDna:
+#             with _assign_sibling(dad, avunc) as result:
+#                 yield result
+#     else:
+#         mt_ok = one_is_none or dad.mtDna == avunc.mt_dna
+#         y_ok = (dad.y_chrom is None or avunc.y_chrom is None) or dad.y_chrom == avunc.y_chrom
+
+#         if mt_ok and y_ok:
+#             with _assign_sibling(dad, avunc) as result:
+#                 yield result
+#     return False
+
+# def _assign_grandparents(src: Node, grandparent: Node) -> None:
+#     if src is None or len(src.parents) == 0:
+#         return False
+
+#     mom = src.parents[0]
+#     dad = src.parents[1]
+
+#     if grandparent.female:
+#         one_is_none = mom.mtDna is None or grandparent.mtDna is None
+#         if one_is_none or mom.mtDna == grandparent.mtDna:
+#             with _assign_parental(mom, grandparent, True) as result:
+#                 yield result
+#         if one_is_none or dad.mtDna == grandparent.mtDna:
+#             with _assign_parental(dad, grandparent, True) as result:
+#                 yield result
+#     else:
+#         with _assign_parental(mom, grandparent, True) as result:
+#             yield result
+        
+#         one_is_none = dad.y_chrom is None or grandparent.y_chrom is None
+#         if one_is_none or dad.y_chrom == grandparent.y_chrom:
+#             with _assign_parental(dad, grandparent, True):
+#                 yield result
+#     return False
+
+# def _assign_grandchildren(src: Node, grandchild: Node) -> None:
+#     if src is None or len(src.parents) == 0:
+#         return False
+    
+#     for child in src.children:
+        
+#     return False
+            
+
+def _assign_verification(
+        graph: Graph,
+        original: Dict[int, List[Tuple[str, str]]]
+    ) -> bool:
+    
+    for node in graph.node_list:
+        if node.is_given():
+            first_rels = node.get_first_degree_rel()
+            second_rels = node.get_second_degree_rel()
+            first_rels = [rel for rel in first_rels if rel.is_given()]
+            second_rels = [rel for rel in second_rels if rel.is_given()]
+
+            for relative in first_rels:
+                if (relative.id, node.id) not in original[1] and (node.id, relative.id) not in original[1]:
+                    return False
+            for relative in second_rels:
+                if (relative.id, node.id) not in original[2] and (node.id, relative.id) not in original[2]:
+                    return False
+    return True
 
 def _assign_helper(
         relation: List[Tuple[str, str]],
         graph: Graph,
         all_possible: List[Graph],
         idx: int,
-        degree: int
+        degree: int,
+        original
     ) -> None:
     """
         Assigns according to all possible relationships specified by the
         `relation` list. All possible graphs are put into the `all_possible` list.
     """
     if relation is None or idx == len(relation):
+        if not _assign_verification(graph, original):
+            return
         all_possible.append(deepcopy(graph))
         return
 
@@ -372,7 +352,7 @@ def _assign_helper(
     if degree >= 2:
         second_rel = src.get_first_degree_rel()
         if dest in second_rel:
-             _assign_helper(relation, graph, all_possible, idx + 1, degree)
+             _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
              return
 
     # ------ ASSIGNMENTS ------
@@ -387,17 +367,17 @@ def _assign_helper(
             # Must be siblings.
             with _assign_sibling(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
         if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
             # Either father/son or son/father.
             # Father/son first.
             with _assign_parental(dest, src) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
             # Son/father.
             with _assign_parental(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
         else:
             # No configuration works here.
             return
@@ -415,18 +395,18 @@ def _assign_helper(
                 # Case 1 siblings.
                 with _assign_sibling(male_node, female_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
 
                 # Case 2 parental.
                 with _assign_parental(male_node, female_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
                 
             if not share_mt_dna:
                 # Don't share mtDNA. Must be father/daughter.
                 with _assign_parental(female_node, male_node) as ok:
                     if ok:
-                        _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                        _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
 
     # Case that source and dest are both females.
     else:
@@ -436,45 +416,53 @@ def _assign_helper(
             # Case 1 siblings.
             with _assign_sibling(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
             
             # Case 2 daughter/mother.
             with _assign_parental(src, dest) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
 
             # Case 3 mother/daugther.
             with _assign_parental(dest, src) as ok:
                 if ok:
-                    _assign_helper(relation, graph, all_possible, idx + 1, degree)
+                    _assign_helper(relation, graph, all_possible, idx + 1, degree, original)
         else:
             # No configuration works here.
             return
 
+global_graph = 0
 
 def _assign_helper_evolved(
         relation: List[List[Tuple[str, str]]],
         graph: Graph,
         all_possible: List[Graph],
         idx: int,
-        degree: int
+        degree: int,
+        original: Dict[int, List[Tuple[str, str]]]
     ) -> None:
     """
         Assigns according to all possible relationships specified by the
         `relation` list. All possible graphs are put into the `all_possible` list.
     """
+    global global_graph
     if relation is None or idx == len(relation):
-        print('got one!')
+        if not _assign_verification(graph, original):
+            return
+        # print('got one!')
+        # visualize_graph_graphviz(graph, filename)
+        # sys.exit(0)
         print(len(all_possible))
-        if len(all_possible) < 20:
-            all_possible.append(deepcopy(graph))
+        all_possible.append(deepcopy(graph))
         return
-
+    print("ASSIGNING THIS INDEX", idx, original[2][idx])
+    if (idx == 1):
+        global_graph = global_graph + 1
+        filename = path.join(dirname, f'emergency/graph{global_graph}')
+        visualize_graph_graphviz(graph, filename)
     choices = relation[idx]
 
     for current in choices:
-        if len(all_possible) > 20:
-            continue
         src, dest = current
         src = graph.get_node(src)
         dest = graph.get_node(dest)
@@ -485,7 +473,7 @@ def _assign_helper_evolved(
         if degree >= 2:
             second_rel = src.get_first_degree_rel()
             if dest in second_rel:
-                _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original)
                 continue
 
         # ------ ASSIGNMENTS ------
@@ -499,18 +487,24 @@ def _assign_helper_evolved(
             if (share_y or one_chrom_none) and (share_mt_dna or one_is_none):
                 # Must be siblings.
                 with _assign_sibling(src, dest) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
             if (share_y or one_chrom_none) and (one_is_none or not share_mt_dna):
                 # Either father/son or son/father.
                 # Father/son first.
                 with _assign_parental(dest, src) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
                 # Son/father.
                 with _assign_parental(src, dest) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
             else:
                 # No configuration works here.
                 continue
@@ -527,19 +521,25 @@ def _assign_helper_evolved(
 
                     # Case 1 siblings.
                     with _assign_sibling(male_node, female_node) as ok:
-                        if ok:
-                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                        original2 = deepcopy(original)
+
+                        if ok and _remove_thirds(graph, original2):
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
 
                     # Case 2 parental.
                     with _assign_parental(male_node, female_node) as ok:
-                        if ok:
-                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                        original2 = deepcopy(original)
+
+                        if ok and _remove_thirds(graph, original2):
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
                     
                 if not share_mt_dna:
                     # Don't share mtDNA. Must be father/daughter.
                     with _assign_parental(female_node, male_node) as ok:
-                        if ok:
-                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                        original2 = deepcopy(original)
+
+                        if ok and _remove_thirds(graph, original2):
+                            _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
 
         # Case that source and dest are both females.
         else:
@@ -548,18 +548,24 @@ def _assign_helper_evolved(
                 
                 # Case 1 siblings.
                 with _assign_sibling(src, dest) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
                 
                 # Case 2 daughter/mother.
                 with _assign_parental(src, dest) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
 
                 # Case 3 mother/daugther.
                 with _assign_parental(dest, src) as ok:
-                    if ok:
-                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree)
+                    original2 = deepcopy(original)
+
+                    if ok and _remove_thirds(graph, original2):
+                        _assign_helper_evolved(relation, graph, all_possible, idx + 1, degree, original2)
             else:
                 # No configuration works here.
                 continue
@@ -885,6 +891,7 @@ def _reduce_relation (first: Node, second: Node, graph: Graph) -> List[Tuple[str
     ret = []
     first_rel = set(first.get_first_degree_rel())
     second_rel = set(second.get_first_degree_rel())
+    
 
     for node in first_rel.difference(second_rel):
         if node.id is second.id or (node.original and second.original):
@@ -927,25 +934,29 @@ def _relax_degree(
 
     possibilities = []
     for degree in pairwise_relations.keys():
+        print(degree)
         degree_possibilities = []
         buffer = []
         for rel in pairwise_relations.get(degree):
             first, second = known.get(rel[0]), known.get(rel[1])
             relaxed = _reduce_relation(first, second, graph)
             buffer.append(relaxed)
-        from pprint import pprint
-        iterations = 1
-        for elem in buffer:
-            iterations *= len(elem)
-            pprint(elem)
-            print(len(elem))
-        print(iterations)
+        # from pprint import pprint
+        # iterations = 1
+        # for elem in buffer:
+        #     iterations *= len(elem)
+        #     pprint(elem)
+        #     print(len(elem))
+        # print(iterations)
         possibilities = buffer
+        break
         # _relax_helper(buffer, 0, [], degree_possibilities)
         # possibilities.append(degree_possibilities)
 
     # ret = []
     # _relax_helper2(possibilities, 0, {}, ret)
+    from pprint import pprint
+    pprint(possibilities)
     ret = possibilities
     return ret
 
@@ -961,10 +972,13 @@ def prob_construct_helper(
         current_prob: float,
         prob_results: List[float],
         graph_results: List[Graph],
-        idx: int
+        idx: int,
+        original
     ):
 
     if idx == len(id_pairs):
+        if not _assign_verification(current, original):
+            return
         prob_results.append(current_prob)
         graph_results.append(deepcopy(current))
         return
@@ -981,7 +995,7 @@ def prob_construct_helper(
         with assigner(first_node, second_node) as ok:
             if ok:
                 prob_construct_helper(current, id_pairs, probs, relationship_arr,
-                                      current_prob * prob, prob_results, graph_results, idx + 1)
+                                      current_prob * prob, prob_results, graph_results, idx + 1, original)
 
 
 
@@ -990,6 +1004,7 @@ def construct_all_known(
         first_probs: Dict[Tuple[str, str], List[int]],
         results: List[Graph],
         graph_probabilities: List[float],
+        original
     ) -> None:
     """
         Constructs all graphs from the given first degree relationships.
@@ -1019,7 +1034,7 @@ def construct_all_known(
     
     current.extrapolate_all()
     prob_construct_helper(current, id_pairs, probs, relationship_arr, 1, result_probs,
-                          result_graphs, 0)
+                          result_graphs, 0, original)
     
     return result_graphs, result_probs
 
@@ -1040,6 +1055,7 @@ def construct_all_graphs(
     """
     assert (degree >= 1 and max <= 4)
 
+
     if degree == max:
         if current is not None and current.size() != 0:
             results.append(current)
@@ -1054,16 +1070,16 @@ def construct_all_graphs(
     valid = []
     if not first_probs:
         if degree == 1:
-            _assign_helper(pairwise_relations.get(1), current, valid, 0, degree)
+            _assign_helper(pairwise_relations.get(1), current, valid, 0, degree, original_pairwise)
         else:
-            print('hit')
-            _assign_helper_evolved(pairwise_relations, current, valid, 0, degree)
+            _assign_helper_evolved(pairwise_relations, current, valid, 0, degree, original_pairwise)
     else:
         probs = []
-        construct_all_known(current, first_probs, valid, probs)
+        construct_all_known(current, first_probs, valid, probs, original_pairwise)
         print(f'Probabilities for degree: {degree} are: {probs}')
 
     if degree == 1:
+        pass
         valid = _prune_graphs(original_pairwise.get(1), current, valid)
     elif degree == 2:
         pass
@@ -1074,15 +1090,23 @@ def construct_all_graphs(
 
     # Don't extrapolate if we've hit the end.
     valid = _mark_and_extrapolate(valid, degree + 1 != max)
+
     i = 0
     for graph in valid:
         i += 1
-        print(i)
         pairwise_copy = deepcopy(pairwise_relations)
+        if degree == 1:
+            val = _remove_seconds(graph, pairwise_copy)
+            # print(pairwise_copy)
+            if not val:
+                continue
+        
+        # val = _remove_thirds(graph, pairwise_copy)
+        # if not val:
+        #     continue
 
         if degree != max - 1:
             dicts = _relax_degree(graph, pairwise_copy)
-            print(dicts)
         if degree == max - 1 or dicts is None or len(dicts) == 0:
             pairwise_map = deepcopy(pairwise_relations)
             # pairwise_map.pop(1, None)
@@ -1096,3 +1120,91 @@ def construct_all_graphs(
 
 
     return
+
+def _remove_thirds(graph: Graph, pairs: dict):
+    if not pairs or 3 not in pairs.keys():
+        return True
+    # print("paris is ", pairs)
+    def _find_cluster(src: str, clusters):
+        for cluster in clusters:
+            if src in cluster:
+                return cluster
+        return None
+    clusters = []
+
+    for node in graph.node_list:
+        second_rel = node.get_second_degree_rel()
+        first_rel = node.get_first_degree_rel()
+        less_two_rel = second_rel + first_rel
+        flag = False
+        for cluster in clusters:
+            if set(set([node.id for node in less_two_rel]).intersection(set(cluster))):
+                cluster.append(node.id)
+                flag = True
+                break
+        if not flag:
+            clusters.append([node.id])
+    
+    third_rels = pairs.get(3)
+    new_rels = []
+    for rel in third_rels:
+        src, dest = rel
+        src, dest = graph.get_node(src), graph.get_node(dest)
+
+        src_cluster = _find_cluster(src.id, clusters)
+        if src_cluster is None:
+            return False
+        
+        # print(src, [node.id for node in src.get_third_degree_rel()])
+        if dest.id in src_cluster and dest not in src.get_third_degree_rel():
+            # visualize_graph_graphviz(graph, filename)
+            print(dest.id, src.id)
+            return False
+        if dest.id not in src_cluster:
+            new_rels.append((src.id, dest.id))
+    
+    pairs[3] = new_rels
+    return True
+
+def _remove_seconds(graph: Graph, pairs: dict):
+    if 2 not in pairs.keys():
+        return True
+    def _find_cluster(src: str, clusters):
+        for cluster in clusters:
+            if src in cluster:
+                return cluster
+        return None
+
+    clusters = []
+    for node in graph.node_list:
+        first_rel = node.get_first_degree_rel()
+        flag = False
+        for cluster in clusters:
+            if set([node.id for node in first_rel]).intersection(set(cluster)):
+                cluster.append(node.id)
+                flag = True
+                break
+        if not flag:
+            clusters.append([node.id])
+
+    second_rels = pairs.get(2)
+    new_rels = []
+    for rel in second_rels:
+        src, dest = rel
+        src, dest = graph.get_node(src), graph.get_node(dest)
+
+        src_cluster = _find_cluster(src.id, clusters)
+        if src_cluster is None:
+            return False
+        
+        if dest.id in src_cluster and dest not in src.get_second_degree_rel():
+            return False
+        if dest.id not in src_cluster:
+            new_rels.append((src.id, dest.id))
+    
+    # print("new rels: ", new_rels)
+    pairs[2] = new_rels
+    return True
+                
+
+

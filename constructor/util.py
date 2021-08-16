@@ -151,7 +151,17 @@ def parse_prob(prob_csv: str, graph: Graph):
             ret.update({key: val})
     return ret
 
-
+def adjusted_list(nodes: Graph):
+    new_nodes = []
+    for node in nodes:
+        flag = False
+        for child in node.children:
+            if child.parents[0] != node and child.parents[1] != node:
+                flag = True
+                break
+        if not flag:
+            new_nodes.append(node)
+    return new_nodes
 def visualize_graph_graphviz(nodes: Graph, name) -> None:
     """
         Visualizes graph using Graphvis instead of NetworkX. Different
@@ -160,6 +170,7 @@ def visualize_graph_graphviz(nodes: Graph, name) -> None:
 
     # Colors for mitochondrial
     nodes = nodes.node_list
+    nodes = adjusted_list(nodes)
     colors = distinctipy.get_colors(14, pastel_factor=1)
     mt_map = {}
     i = 0

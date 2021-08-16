@@ -130,5 +130,5 @@ dmypy.json
 
 # Misc
 output/
-output2/
+output*/
 .vscode/
